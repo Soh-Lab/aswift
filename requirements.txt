@@ -1,0 +1,15 @@
+# using python 3.12.6
+
+numpy==2.2.5
+toml==0.10.2
+matplotlib==3.10.1
+pydantic==2.11.4
+tomli==2.2.1
+loguru==0.7.3
+scipy==1.15.3
+pandas==2.2.2
+pyarrow==20.0.0
+scikit-learn==1.6.1
+streamlit==1.46.1
+pybaselines==1.2.1
+xarray==2025.10.1

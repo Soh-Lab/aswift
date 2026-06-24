@@ -1,0 +1,18 @@
+#### ECHEM PEAK EXTRACTION CONFIG PARAMS ####
+
+[parameters]
+# options: aswift, poly_linear
+fitting_methods = ['poly_linear']
+# frequency values you want to fit
+hz_values = [150, 200, 250]
+# averaged replicates range for gain calculations (starts at 0! assumed to be lower to upper, inclusive data points)
+calibration_lower_idx = 0
+calibration_upper_idx = 4
+# flag for setting huber reweighting for tikhonov smoothing filter
+huber_reweight = true
+# set to true if first file is [num]hz.csv, false if first file is [num]hz-1.csv
+use_file0 = true
+
+[locations]
+# set to input directory with all the echem csv files
+input_dir = '/Users/Max_1/Soh Lab/echem/20250813 E1 npAu Probe/01_Binding Curve'

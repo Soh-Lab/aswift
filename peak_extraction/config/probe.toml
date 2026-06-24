@@ -1,0 +1,11 @@
+#### ECHEM PEAK EXTRACTION CONFIG PARAMS ####
+
+[parameters]
+fitting_methods = ['aswift']
+hz_values = [150, 200, 250]
+calibration_lower_idx = 0
+calibration_upper_idx = 3
+bg_buffer = 0
+
+[locations]
+input_dir = '/Users/Max/Soh Lab/echem/20250816 E1 npAu Probe/07_post cal day 3'
