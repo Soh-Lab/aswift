@@ -2,7 +2,7 @@
 
 [parameters]
 # options: aswift, poly_linear
-fitting_methods = ['poly_linear']
+fitting_methods = ['aswift']
 # frequency values you want to fit
 hz_values = [150, 200, 250]
 # averaged replicates range for gain calculations (starts at 0! assumed to be lower to upper, inclusive data points)

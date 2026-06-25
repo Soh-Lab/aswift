@@ -1,8 +1,10 @@
 """Signal calculation methods.
 
-This module intentionally contains only the supported fitting algorithms and
-their plotting calculators. File discovery, CSV parsing, folder traversal, and
-result-table generation live in neighboring modules.
+ASWIFT models SWV peak extraction as a sequence of weighted Tikhonov
+regularization problems: robust whole-trace smoothing, lower-envelope
+derpsalsa background fitting, local peak smoothing, and final peak-height
+calculation. The public functions return full profiles so callers can inspect
+or plot every fitted component.
 """
 
 import math
@@ -14,13 +16,46 @@ from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filte
 
 from peak_extraction.config import config
 from peak_extraction.io import get_volts_array
+from peak_extraction.models import ASwiftSettings, FitResult, PolyLinearSettings
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"
 ASWIFT_PEAK_METHOD = "tikhonov"
 SUPPORTED_FITTING_METHODS = ("aswift", "poly_linear")
 
-_y_smooth = None
+
+def _as_array(name: str, values) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} must be a one-dimensional array")
+    if arr.size < 5:
+        raise ValueError(f"{name} must contain at least 5 points")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} contains NaN or infinite values")
+    return arr
+
+
+def _validate_trace(volts, current) -> tuple[np.ndarray, np.ndarray]:
+    volts_arr = _as_array("volts", volts)
+    current_arr = _as_array("current", current)
+    if volts_arr.shape != current_arr.shape:
+        raise ValueError("volts and current must have the same shape")
+    if np.ptp(volts_arr) == 0:
+        raise ValueError("volts must span more than one value")
+    return volts_arr, current_arr
+
+
+def aswift_settings_from_config() -> ASwiftSettings:
+    params = config.parameters
+    return ASwiftSettings(
+        baseline_boundary=params.baseline_boundary,
+        bg_buffer=params.bg_buffer,
+        huber_reweight=params.huber_reweight,
+        huber_cutoff=params.huber_cutoff,
+        mad_window=params.mad_window,
+        peak_lambda_scale=params.peak_lambda_scale,
+        peak_prominence=params.peak_prominence,
+    )
 
 
 def poly_calculator(volts, *coeffs):
@@ -54,6 +89,12 @@ def calculate_solved_background(volts, background):
 
 
 def make_smoother_D2(size: int):
+    """Create a second-derivative Tikhonov smoother.
+
+    The returned solver minimizes ||W(y - g)||^2 + lambda ||D2 g||^2,
+    where `g` is the smooth trace and `D2` penalizes curvature. The banded
+    solve keeps repeated lambda evaluations fast enough for L-curve searches.
+    """
     if size < 5:
         raise ValueError("size must be >= 5")
 
@@ -103,8 +144,8 @@ def mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> float:
     return 1.4826 * mad + eps
 
 
-def rolling_mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    window = max(int(config.parameters.mad_window), 5)
+def rolling_mad_scale(residuals: np.ndarray, window: int, eps: float = 1e-12) -> np.ndarray:
+    window = max(int(window), 5)
     if window % 2 == 0:
         window += 1
 
@@ -126,8 +167,13 @@ def rolling_mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     return np.maximum(1.4826 * mad + eps, eps)
 
 
-def huber_irls_weights(residuals: np.ndarray, scale) -> np.ndarray:
-    cutoff = config.parameters.huber_cutoff
+def huber_irls_weights(residuals: np.ndarray, scale, cutoff: float) -> np.ndarray:
+    """Return Huber-style IRLS weights from locally scaled residuals.
+
+    Residuals below `cutoff * scale` keep unit weight; larger residuals are
+    downweighted in inverse proportion to their scaled magnitude so outliers and
+    distorted regions have less influence on lambda selection.
+    """
     eps = 1e-12
 
     residuals = np.asarray(residuals, dtype=float)
@@ -157,6 +203,7 @@ def huber_irls_weights(residuals: np.ndarray, scale) -> np.ndarray:
 def huber_smoother_D2(
     y: np.ndarray,
     lam: float,
+    settings: ASwiftSettings,
     base_w: np.ndarray | None = None,
     max_iter: int = 25,
     tol: float = 1e-6,
@@ -180,8 +227,8 @@ def huber_smoother_D2(
 
     for _ in range(max_iter):
         residuals = y - smooth
-        scale = rolling_mad_scale(residuals)
-        robust_weights = huber_irls_weights(residuals, scale)
+        scale = rolling_mad_scale(residuals, settings.mad_window)
+        robust_weights = huber_irls_weights(residuals, scale, settings.huber_cutoff)
         new_weights = np.maximum(base_w * robust_weights, min_w)
         new_smooth = smoother(y, lam, new_weights)
 
@@ -201,6 +248,12 @@ def choose_lambda_lcurve(
     weights=None,
     eps=1e-300,
 ):
+    """Select a Tikhonov lambda from the L-curve corner.
+
+    The L-curve compares fidelity to the observed trace against roughness of
+    the smoothed trace. ASWIFT uses the maximum-curvature point as a data-driven
+    tradeoff between following noise and oversmoothing the peak.
+    """
     values = np.asarray(values, dtype=float)
     if weights is not None:
         weights = np.asarray(weights, dtype=float)
@@ -281,10 +334,21 @@ def choose_lambda_lcurve(
     return best_lam, best_smooth, params
 
 
-def huber_reweighted_lcurve(current, pilot_smooth, n_grid=200, lam_bounds=(1e-1, 1e8)):
+def huber_reweighted_lcurve(
+    current,
+    pilot_smooth,
+    settings: ASwiftSettings,
+    n_grid=200,
+    lam_bounds=(1e-1, 1e8),
+):
+    """Repeat L-curve smoothing with Huber IRLS weights.
+
+    Large residuals receive smaller weights so sharp peak structure and
+    occasional artifacts do not dominate the smooth-background estimate.
+    """
     residuals = current - pilot_smooth
-    scale = rolling_mad_scale(residuals)
-    weights = np.maximum(huber_irls_weights(residuals, scale), 1e-8)
+    scale = rolling_mad_scale(residuals, settings.mad_window)
+    weights = np.maximum(huber_irls_weights(residuals, scale, settings.huber_cutoff), 1e-8)
 
     best_lam, _, params = choose_lambda_lcurve(
         current,
@@ -292,13 +356,19 @@ def huber_reweighted_lcurve(current, pilot_smooth, n_grid=200, lam_bounds=(1e-1,
         n_grid=n_grid,
         lam_bounds=lam_bounds,
     )
-    best_smooth, final_weights = huber_smoother_D2(current, best_lam)
+    best_smooth, final_weights = huber_smoother_D2(current, best_lam, settings)
     params["weights"] = final_weights
     return best_lam, best_smooth, params
 
 
-def get_background_range(current, rel_height=1.0):
-    boundary = config.parameters.baseline_boundary
+def get_background_range(current, settings: ASwiftSettings, rel_height=1.0):
+    """Find the dominant prominence-based peak window.
+
+    ASWIFT assumes one primary redox peak and uses the largest-prominence peak
+    to define the region excluded from baseline fitting and included in local
+    peak smoothing.
+    """
+    boundary = settings.baseline_boundary
     peaks, props = find_peaks(current, prominence=(None, None))
     if len(peaks) == 0:
         raise ValueError("No peaks found")
@@ -309,15 +379,30 @@ def get_background_range(current, rel_height=1.0):
 
     widths = peak_widths(current, [best_peak], rel_height=min(rel_height, 1.0))
     lower, upper = math.floor(widths[2][0]), math.ceil(widths[3][0])
-    idx_bound = max(best_peak - lower, upper - best_peak) + config.parameters.bg_buffer
+    idx_bound = max(best_peak - lower, upper - best_peak) + settings.bg_buffer
     lower = max(best_peak - idx_bound, padding)
     upper = min(best_peak + idx_bound, current.shape[0] - padding - 1)
 
     return lower, upper, best_peak
 
 
-def choose_lambda_area(current, volts, lam_bounds=(1e-1, 1e7), search_space=50, refine_space=10, threshold=0.1):
-    lower, upper, peak_idx = get_background_range(current, rel_height=1.0)
+def choose_lambda_area(
+    current,
+    volts,
+    settings: ASwiftSettings,
+    lam_bounds=(1e-1, 1e7),
+    search_space=50,
+    refine_space=10,
+    threshold=0.1,
+):
+    """Choose derpsalsa lambda by minimizing background area under the peak.
+
+    After the smoothed trace identifies a peak window, candidate derpsalsa
+    backgrounds are scored by the area they place inside that window. The
+    selected background is the lowest plausible curve that still has support on
+    both sides of the peak.
+    """
+    lower, upper, peak_idx = get_background_range(current, settings, rel_height=1.0)
     peak_indices = np.zeros_like(current, dtype=bool)
     peak_indices[lower:upper] = True
     baseline_fitter = Baseline(x_data=volts)
@@ -351,40 +436,37 @@ def choose_lambda_area(current, volts, lam_bounds=(1e-1, 1e7), search_space=50, 
     return best_lam, best_background
 
 
-def fit_derpsalsa_background_iterative(current, volts):
-    """ASWIFT background fit: L-curve smoothing followed by derpsalsa."""
+def fit_derpsalsa_background_iterative(current, volts, settings: ASwiftSettings):
+    """ASWIFT background fit: smooth the trace, then fit derpsalsa baseline."""
     lam_smoother, smooth, _ = choose_lambda_lcurve(current)
-    if config.parameters.huber_reweight:
-        lam_smoother, smooth, _ = huber_reweighted_lcurve(current, smooth)
+    if settings.huber_reweight:
+        lam_smoother, smooth, _ = huber_reweighted_lcurve(current, smooth, settings)
 
-    global _y_smooth
-    _y_smooth = smooth
-
-    _, background = choose_lambda_area(smooth, volts)
-    lower, upper, _ = get_background_range(smooth, rel_height=config.parameters.peak_prominence)
+    _, background = choose_lambda_area(smooth, volts, settings)
+    lower, upper, _ = get_background_range(smooth, settings, rel_height=settings.peak_prominence)
     peak_indices = np.zeros_like(smooth, dtype=bool)
     peak_indices[lower:upper] = True
 
-    return background, peak_indices
+    return background, peak_indices, smooth
 
 
-def fit_tikhonov_peak(current, volts, background, indices):
-    """ASWIFT peak fit: Tikhonov smoothing on the background-subtracted peak window."""
+def fit_tikhonov_peak(current, volts, background, indices, settings: ASwiftSettings, smooth_current=None):
+    """ASWIFT peak fit inside the detected background-excluded peak window."""
     peak_region = current[indices] - background[indices]
-    peak_lambda_scale = config.parameters.peak_lambda_scale
+    peak_lambda_scale = settings.peak_lambda_scale
 
-    if config.parameters.huber_reweight:
-        global _y_smooth
-        if _y_smooth is None:
-            _, _y_smooth, _ = choose_lambda_lcurve(current)
+    if settings.huber_reweight:
+        if smooth_current is None:
+            _, smooth_current, _ = choose_lambda_lcurve(current)
 
-        residuals = current - _y_smooth
-        scale = rolling_mad_scale(residuals)
-        weights = np.maximum(huber_irls_weights(residuals, scale), 1e-8)
+        residuals = current - smooth_current
+        scale = rolling_mad_scale(residuals, settings.mad_window)
+        weights = np.maximum(huber_irls_weights(residuals, scale, settings.huber_cutoff), 1e-8)
         lam_peak, _, _ = choose_lambda_lcurve(peak_region, weights=weights[indices])
         peak_fit, _ = huber_smoother_D2(
             peak_region,
             lam=lam_peak * peak_lambda_scale,
+            settings=settings,
             base_w=weights[indices],
         )
         noise_reference = residuals
@@ -400,26 +482,61 @@ def fit_tikhonov_peak(current, volts, background, indices):
         raise ValueError("Peak smaller than 2 * MAE smoothed fit residuals")
 
     popt = np.zeros_like(current)
+    popt = np.full_like(current, np.nan, dtype=float)
     popt[indices] = peak_fit
     return popt, peak_signal, len(popt)
 
 
-def aswift_fit(current, volts):
-    """Run the fixed ASWIFT method pair: derpsalsa_iter background and Tikhonov peak."""
-    background, peak_indices = fit_derpsalsa_background_iterative(current, volts)
-    peak_profile, peak_signal, bg_idx = fit_tikhonov_peak(current, volts, background, peak_indices)
+def aswift_fit(volts, current, settings: ASwiftSettings | None = None) -> FitResult:
+    """Fit one SWV trace with ASWIFT.
 
-    peak_idx = np.argmin(np.abs(peak_profile - peak_signal))
+    Parameters are one-dimensional voltage and current arrays. The result
+    contains the peak signal, the background at the peak, and full-length
+    background/peak profiles suitable for plotting.
+    """
+    volts, current = _validate_trace(volts, current)
+    settings = settings or ASwiftSettings()
+
+    background, peak_indices, smooth_current = fit_derpsalsa_background_iterative(current, volts, settings)
+    peak_profile, peak_signal, bg_idx = fit_tikhonov_peak(
+        current,
+        volts,
+        background,
+        peak_indices,
+        settings,
+        smooth_current=smooth_current,
+    )
+
+    # The reported signal is max_i(p_i - b_i) in the detected peak window.
+    peak_idx = int(np.nanargmax(peak_profile))
     peak_background = background[peak_idx]
-    popt = np.concatenate([peak_profile, background])
+    return FitResult(
+        method="aswift",
+        volts=volts,
+        current=current,
+        peak_signal=float(peak_signal),
+        peak_background=float(peak_background),
+        peak_voltage=float(volts[peak_idx]),
+        peak_index=peak_idx,
+        peak_profile=peak_profile,
+        background_profile=background,
+        params={"settings": settings},
+    )
 
-    return peak_signal, peak_background, bg_idx, popt
 
-
-def poly_linear_fit(current, volts):
+def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) -> FitResult:
     """Fit the legacy polynomial signal with a linear local baseline."""
-    smooth_current = savgol_filter(current, 15, 3)
-    polynomial_coeffs = np.polyfit(volts, smooth_current, 15)
+    volts, current = _validate_trace(volts, current)
+    settings = settings or PolyLinearSettings()
+    if settings.savgol_window % 2 == 0:
+        raise ValueError("savgol_window must be odd")
+    if settings.savgol_window > current.size:
+        raise ValueError("savgol_window cannot be longer than current")
+    if settings.savgol_degree >= settings.savgol_window:
+        raise ValueError("savgol_degree must be less than savgol_window")
+
+    smooth_current = savgol_filter(current, settings.savgol_window, settings.savgol_degree)
+    polynomial_coeffs = np.polyfit(volts, smooth_current, settings.polynomial_degree)
     polynomial_fit = np.polyval(polynomial_coeffs, volts)
 
     peak_idxs, _ = find_peaks(polynomial_fit)
@@ -443,13 +560,28 @@ def poly_linear_fit(current, volts):
     slope, intercept = baseline_coeffs
     adjusted_polynomial[-2] -= slope
     adjusted_polynomial[-1] -= intercept
-    bg_idx = adjusted_polynomial.size
-    popt = np.concatenate([adjusted_polynomial, np.asarray(baseline_coeffs, dtype=float)])
+    peak_profile = np.polyval(adjusted_polynomial, volts)
+    background_profile = np.polyval(baseline_coeffs, volts)
 
-    return peak_signal, peak_background, bg_idx, popt
+    return FitResult(
+        method="poly_linear",
+        volts=volts,
+        current=current,
+        peak_signal=float(peak_signal),
+        peak_background=float(peak_background),
+        peak_voltage=float(volts[peak_idx]),
+        peak_index=peak_idx,
+        peak_profile=peak_profile,
+        background_profile=background_profile,
+        params={
+            "polynomial_coeffs": polynomial_coeffs,
+            "baseline_coeffs": baseline_coeffs,
+            "settings": settings,
+        },
+    )
 
 
-def fit_signal(current, volts, method: str):
+def fit_signal(volts, current, method: str, settings=None) -> FitResult:
     """Dispatch to one of the two supported fitting methods."""
     fitting_methods = {
         "aswift": aswift_fit,
@@ -462,4 +594,4 @@ def fit_signal(current, volts, method: str):
         allowed = ", ".join(SUPPORTED_FITTING_METHODS)
         raise ValueError(f"Unsupported fitting method '{method}'. Allowed methods: {allowed}.") from exc
 
-    return fitting_method(current, volts)
+    return fitting_method(volts, current, settings=settings)

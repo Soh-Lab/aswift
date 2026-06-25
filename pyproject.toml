@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aswift"
+version = "0.1.0"
+description = "ASWIFT peak fitting utilities for square-wave voltammetry."
+readme = "readme.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.15",
+    "pandas>=2.2",
+    "pybaselines>=1.2",
+    "pydantic>=2.11",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.10"]
+streamlit = ["streamlit>=1.46", "matplotlib>=3.10"]
+
+[tool.setuptools.packages.find]
+include = ["peak_extraction*"]

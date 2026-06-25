@@ -6,8 +6,9 @@ import time
 import numpy as np
 
 from peak_extraction.config import config
-from peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
+from peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, aswift_settings_from_config, fit_signal
 from peak_extraction.io import discover_data_folders, get_date, list_csv_files, read_swv_csv
+from peak_extraction.models import failed_fit_result
 
 
 def fit_data(path, method: str):
@@ -17,12 +18,13 @@ def fit_data(path, method: str):
 
     for channel_index, current in enumerate(currents):
         try:
-            peak, background, bg_idx, popt = fit_signal(current, volts, method)
-            fit_results.append((channel_index, peak, background, bg_idx, popt))
+            settings = aswift_settings_from_config() if method == "aswift" else None
+            result = fit_signal(volts, current, method, settings=settings)
+            fit_results.append((channel_index, result))
         except Exception as exc:
             filename = os.path.basename(path)
             print(f"Failed fit: {filename}, channel {channel_index}, reason: {exc}")
-            fit_results.append((channel_index, np.nan, np.nan, np.nan, 3 * [np.nan]))
+            fit_results.append((channel_index, failed_fit_result(method, volts, current, exc)))
 
     return fit_results
 
@@ -62,17 +64,13 @@ def get_peaks(input_dir):
                 volts, _ = read_swv_csv(path)
                 trace_type = "full" if np.nanmin(volts) < config.parameters.full_cutoff else "partial"
 
-                for channel_index, peak, background, bg_idx, popt in fit_data(path, method=method):
-                    results.append({
-                        "hz": hz_values[hz_index],
-                        "num": file_index,
-                        "channel": channel_index,
-                        "trace_type": trace_type,
-                        "peak": peak,
-                        "background": background,
-                        "bg_idx": bg_idx,
-                        "popt": popt if isinstance(popt, list) else popt.tolist(),
-                    })
+                for channel_index, fit_result in fit_data(path, method=method):
+                    results.append(fit_result.to_record(
+                        hz=hz_values[hz_index],
+                        num=file_index,
+                        channel=channel_index,
+                        trace_type=trace_type,
+                    ))
 
         method_results.append(results)
 

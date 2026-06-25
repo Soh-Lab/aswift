@@ -17,8 +17,6 @@ from peak_extraction.extract_peaks import (
     ASWIFT_PEAK_METHOD,
     calculate_solved_background,
     calculate_solved_peak,
-    linear_calculator,
-    poly_calculator,
 )
 from peak_extraction.io import read_swv_csv, result_file_name
 
@@ -55,10 +53,10 @@ def get_first_trace_xlim(hz, channel, num_values):
 
 fitting_method = config.parameters.fitting_methods[0]
 if fitting_method == 'poly_linear':
-    pk_method = poly_calculator
-    bg_method = linear_calculator
-    pk_method_name = 'polynomial'
-    bg_method_name = 'linear'
+    pk_method = calculate_solved_peak
+    bg_method = calculate_solved_background
+    pk_method_name = 'polynomial profile'
+    bg_method_name = 'linear background profile'
 elif fitting_method == 'aswift':
     pk_method = calculate_solved_peak
     bg_method = calculate_solved_background
@@ -122,8 +120,8 @@ try:
         fitted = peak + background
         peak_idx = np.nanargmax(peak)
         peak_v = volts[peak_idx]
-        peak_background = bg_method(peak_v, popt[bg_idx:])
-        peak_diff = pk_method(peak_v, *popt[:bg_idx])
+        peak_background = background[peak_idx]
+        peak_diff = peak[peak_idx]
         peak_total = peak_background + peak_diff
 
 
