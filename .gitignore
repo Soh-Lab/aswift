@@ -12,3 +12,4 @@ dist/
 *.egg-info/
 local_pipelines/
 examples/outputs/
+.idea
