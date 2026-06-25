@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -16,7 +17,7 @@ from numpy.typing import NDArray
 
 from peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
 from peak_extraction.io import get_date, read_swv_csv
-from peak_extraction.models import ASwiftSettings, FitResult, failed_fit_result
+from peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,41 @@ def _normalize_workers(n_workers: int | None, n_jobs: int) -> int:
     return min(int(n_workers), n_jobs)
 
 
+def _parse_array_value(value: Any) -> NDArray[np.float64]:
+    """Convert list-like dataframe cells into one-dimensional float arrays."""
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                value = ast.literal_eval(text)
+            except (SyntaxError, ValueError):
+                value = np.fromstring(text.strip("[]"), sep=" ")
+    return np.asarray(value, dtype=float)
+
+
+def _is_array_cell(value: Any) -> bool:
+    if isinstance(value, str):
+        text = value.strip()
+        if not (text.startswith("[") and text.endswith("]")):
+            return False
+        try:
+            parsed = _parse_array_value(text)
+        except (TypeError, ValueError):
+            return False
+        return parsed.ndim == 1 and parsed.size > 1
+    return isinstance(value, (list, tuple, np.ndarray, pd.Series))
+
+
+def _has_array_trace_columns(df: pd.DataFrame, voltage_col: str, current_col: str) -> bool:
+    if not {voltage_col, current_col}.issubset(df.columns) or df.empty:
+        return False
+    first = df[[voltage_col, current_col]].dropna().head(1)
+    if first.empty:
+        return False
+    row = first.iloc[0]
+    return _is_array_cell(row[voltage_col]) and _is_array_cell(row[current_col])
+
+
 def dataframe_to_traces(
     df: pd.DataFrame,
     *,
@@ -51,16 +87,29 @@ def dataframe_to_traces(
     """Convert a formatted dataframe into trace objects.
 
     Two dataframe shapes are supported:
-    - Long format: one row per point, with voltage/current columns.
-    - Array-row format: one row per trace, with array-like volts/signal columns.
+    - Preferred array-row format: one row per trace, with array-like
+      voltage/current columns and metadata in the remaining columns.
+    - Legacy long format: one row per point, with scalar voltage/current
+      columns that are grouped into traces.
     """
+    if _has_array_trace_columns(df, voltage_col, current_col):
+        traces = []
+        metadata_cols = [c for c in df.columns if c not in {voltage_col, current_col}]
+        for _, row in df.iterrows():
+            traces.append(SwvTrace(
+                volts=_parse_array_value(row[voltage_col]),
+                current=_parse_array_value(row[current_col]),
+                metadata={col: row[col] for col in metadata_cols},
+            ))
+        return traces
+
     if {volts_array_col, signal_array_col}.issubset(df.columns):
         traces = []
         metadata_cols = [c for c in df.columns if c not in {volts_array_col, signal_array_col}]
         for _, row in df.iterrows():
             traces.append(SwvTrace(
-                volts=np.asarray(row[volts_array_col], dtype=float),
-                current=np.asarray(row[signal_array_col], dtype=float),
+                volts=_parse_array_value(row[volts_array_col]),
+                current=_parse_array_value(row[signal_array_col]),
                 metadata={col: row[col] for col in metadata_cols},
             ))
         return traces
@@ -97,11 +146,49 @@ def dataframe_to_traces(
     return traces
 
 
+def long_form_to_trace_dataframe(
+    df: pd.DataFrame,
+    *,
+    voltage_col: str = "voltage",
+    current_col: str = "current",
+    point_col: str = "point",
+    group_cols: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Convert legacy one-row-per-point SWV data into one row per trace."""
+    required = {voltage_col, current_col}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Dataframe is missing required columns: {sorted(missing)}")
+    if _has_array_trace_columns(df, voltage_col, current_col):
+        return df.copy()
+
+    if group_cols is None:
+        excluded = {voltage_col, current_col, point_col}
+        group_cols = [col for col in df.columns if col not in excluded]
+    if not group_cols:
+        group_cols = ["__trace_id"]
+        df = df.copy()
+        df["__trace_id"] = 0
+
+    sort_cols = [col for col in [*group_cols, point_col] if col in df.columns]
+    data = df.sort_values(sort_cols) if sort_cols else df
+    rows = []
+    for key, group in data.groupby(list(group_cols), dropna=False, sort=False):
+        if not isinstance(key, tuple):
+            key = (key,)
+        row = dict(zip(group_cols, key))
+        row.pop("__trace_id", None)
+        row[voltage_col] = group[voltage_col].to_numpy(dtype=float).tolist()
+        row[current_col] = group[current_col].to_numpy(dtype=float).tolist()
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def fit_traces(
     traces: Sequence[SwvTrace],
     *,
     method: str = "aswift",
-    settings: ASwiftSettings | None = None,
+    settings: AswiftSettings | None = None,
     n_workers: int | None = None,
     raise_errors: bool = False,
 ) -> list[FitResult]:
@@ -128,7 +215,7 @@ def fit_traces(
 def _fit_one_trace(
     trace: SwvTrace,
     method: str,
-    settings: ASwiftSettings | None,
+    settings: AswiftSettings | None,
     raise_errors: bool,
 ) -> FitResult:
     try:
@@ -143,7 +230,7 @@ def fit_dataframe(
     df: pd.DataFrame,
     *,
     method: str = "aswift",
-    settings: ASwiftSettings | None = None,
+    settings: AswiftSettings | None = None,
     n_workers: int | None = None,
     group_cols: Sequence[str] | None = None,
 ) -> pd.DataFrame:
@@ -156,7 +243,7 @@ def fit_dataframe(
 def fit_results_to_dataframe(results: Sequence[FitResult], traces: Sequence[SwvTrace]) -> pd.DataFrame:
     rows = []
     for result, trace in zip(results, traces):
-        rows.append({
+        row = {
             **trace.metadata,
             "method": result.method,
             "success": result.success,
@@ -165,12 +252,17 @@ def fit_results_to_dataframe(results: Sequence[FitResult], traces: Sequence[SwvT
             "background": result.peak_background,
             "peak_voltage": result.peak_voltage,
             "peak_index": result.peak_index,
-            "volts": result.volts.tolist(),
-            "signal": result.current.tolist(),
+            "voltage": result.volts.tolist(),
+            "current": result.current.tolist(),
             "peak_profile": result.peak_profile.tolist(),
             "background_profile": result.background_profile.tolist(),
             "fitted_signal": result.fitted_current.tolist(),
-        })
+        }
+        if "peak_window" in result.params:
+            start, end = result.params["peak_window"]
+            row["peak_window_start"] = int(start)
+            row["peak_window_end"] = int(end)
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -221,7 +313,7 @@ def formatted_csvs_to_dataframe(
     hz_values: Iterable[int] | None = None,
     use_file0: bool = True,
 ) -> pd.DataFrame:
-    """Load existing formatted SWV CSV files into the long dataframe shape."""
+    """Load formatted SWV CSV files into one row per voltammogram."""
     folder = Path(folder)
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -256,20 +348,18 @@ def formatted_csvs_to_dataframe(
         volts, currents = read_swv_csv(str(path))
         trace_type = "full" if np.nanmin(volts) < 1.0 else "partial"
         for channel, current in enumerate(currents):
-            for point, (volt, value) in enumerate(zip(volts, current)):
-                rows.append({
-                    "folder": str(folder),
-                    "file": path.name,
-                    "hz": hz,
-                    "num": num,
-                    "channel": channel,
-                    "time": elapsed,
-                    "timestamp": timestamp,
-                    "trace_type": trace_type,
-                    "point": point,
-                    "voltage": volt,
-                    "current": value,
-                })
+            rows.append({
+                "folder": str(folder),
+                "file": path.name,
+                "hz": hz,
+                "num": num,
+                "channel": channel,
+                "time": elapsed,
+                "timestamp": timestamp,
+                "trace_type": trace_type,
+                "voltage": volts.tolist(),
+                "current": current.tolist(),
+            })
 
     if not rows:
         raise ValueError(f"No formatted SWV CSV files found in {folder}")
@@ -277,7 +367,7 @@ def formatted_csvs_to_dataframe(
 
 
 def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
-    """Load PalmSens .pssession files into the same long dataframe shape.
+    """Load PalmSens .pssession files into one row per voltammogram.
 
     This optional adapter requires `pypalmsens`. It extracts potential arrays
     and net current arrays, preserving file, timestamp, frequency, and channel.
@@ -324,20 +414,18 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
             volts = np.asarray(arrays[volt_idx], dtype=float)
             current = np.asarray(arrays[current_idx], dtype=float)
             label = getattr(arrays[current_idx], "name", f"channel_{channel}")
-            for point, (volt, value) in enumerate(zip(volts, current)):
-                rows.append({
-                    "folder": str(folder),
-                    "file": path.name,
-                    "hz": freq,
-                    "num": num,
-                    "channel": channel,
-                    "label": label,
-                    "timestamp": timestamp,
-                    "device": device,
-                    "point": point,
-                    "voltage": volt,
-                    "current": value,
-                })
+            rows.append({
+                "folder": str(folder),
+                "file": path.name,
+                "hz": freq,
+                "num": num,
+                "channel": channel,
+                "label": label,
+                "timestamp": timestamp,
+                "device": device,
+                "voltage": volts.tolist(),
+                "current": current.tolist(),
+            })
 
     if not rows:
         raise ValueError(f"No SWV traces could be read from .pssession files in {folder}")
@@ -380,12 +468,12 @@ def fit_pssession_folder(
     folder: str | Path,
     *,
     method: str = "aswift",
-    settings: ASwiftSettings | None = None,
+    settings: AswiftSettings | None = None,
     n_workers: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read `.pssession` files from a folder and fit each SWV trace.
 
-    Returns the long-form trace dataframe and a fitted result dataframe. The
+    Returns the trace dataframe and a fitted result dataframe. The
     result rows are ordered by acquisition time, frequency, file number, and
     channel when those fields are available.
     """
@@ -405,7 +493,7 @@ def fit_pssession_folder(
 
 
 def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Sort long-form SWV data by time, frequency, trace number, channel, point."""
+    """Sort SWV trace rows by time, frequency, trace number, and channel."""
     df = df.copy()
     if "timestamp" in df.columns:
         parsed = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
@@ -415,7 +503,7 @@ def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             df["time"] = (parsed - first).dt.total_seconds() / 3600
 
     sort_cols = [
-        col for col in ["timestamp", "time", "hz", "num", "channel", "point"]
+        col for col in ["timestamp", "time", "hz", "num", "channel"]
         if col in df.columns
     ]
     return df.sort_values(sort_cols).reset_index(drop=True) if sort_cols else df
@@ -538,10 +626,10 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
     filtered, and plotted later. This helper converts one selected row back
     into the same object returned by ``aswift_fit`` or ``poly_linear_fit``.
     """
+    voltage_key = "voltage" if "voltage" in row else "volts"
+    current_key = "current" if "current" in row else "signal"
     required = {
         "method",
-        "volts",
-        "signal",
         "peak",
         "background",
         "peak_voltage",
@@ -549,6 +637,8 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         "peak_profile",
         "background_profile",
         "success",
+        voltage_key,
+        current_key,
     }
     missing = required - set(row.keys())
     if missing:
@@ -558,19 +648,42 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
     if pd.isna(error):
         error = None
 
+    params = {}
+    if "peak_window_start" in row and "peak_window_end" in row:
+        start = row.get("peak_window_start")
+        end = row.get("peak_window_end")
+        if pd.notna(start) and pd.notna(end):
+            params["peak_window"] = (int(start), int(end))
+
     return FitResult(
         method=str(row["method"]),
-        volts=np.asarray(row["volts"], dtype=float),
-        current=np.asarray(row["signal"], dtype=float),
+        volts=_parse_array_value(row[voltage_key]),
+        current=_parse_array_value(row[current_key]),
         peak_signal=float(row["peak"]),
         peak_background=float(row["background"]),
         peak_voltage=float(row["peak_voltage"]),
         peak_index=int(row["peak_index"]),
-        peak_profile=np.asarray(row["peak_profile"], dtype=float),
-        background_profile=np.asarray(row["background_profile"], dtype=float),
+        peak_profile=_parse_array_value(row["peak_profile"]),
+        background_profile=_parse_array_value(row["background_profile"]),
+        params=params,
         success=bool(row["success"]),
         error=error,
     )
+
+
+def _fit_plot_mask(result: FitResult) -> NDArray[np.bool_]:
+    mask = np.isfinite(result.fitted_current)
+    if result.method != "aswift":
+        return mask
+
+    peak_window = result.params.get("peak_window")
+    if peak_window is None:
+        return np.isfinite(result.peak_profile)
+
+    start, end = peak_window
+    window_mask = np.zeros(result.volts.size, dtype=bool)
+    window_mask[max(int(start), 0):min(int(end), result.volts.size)] = True
+    return window_mask & mask
 
 
 def plot_fit_result(result: FitResult, ax=None):
@@ -582,7 +695,9 @@ def plot_fit_result(result: FitResult, ax=None):
 
     ax.plot(result.volts, result.current, label="data", color="tab:blue")
     ax.plot(result.volts, result.background_profile, label="background", color="black")
-    ax.plot(result.volts, result.fitted_current, label="fit", color="tab:red")
+    fit_mask = _fit_plot_mask(result)
+    fit_label = "fit (peak region)" if result.method == "aswift" else "fit"
+    ax.plot(result.volts[fit_mask], result.fitted_current[fit_mask], label=fit_label, color="tab:red")
     if result.success and result.peak_index >= 0:
         ax.vlines(
             result.peak_voltage,

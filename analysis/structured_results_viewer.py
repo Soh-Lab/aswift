@@ -32,6 +32,8 @@ from peak_extraction.batch import (  # noqa: E402
 )
 
 ARRAY_COLUMNS = {
+    "voltage",
+    "current",
     "volts",
     "signal",
     "peak_profile",
@@ -39,10 +41,8 @@ ARRAY_COLUMNS = {
     "fitted_signal",
 }
 
-REQUIRED_RESULT_COLUMNS = {
+REQUIRED_FIT_COLUMNS = {
     "method",
-    "volts",
-    "signal",
     "peak",
     "background",
     "peak_voltage",
@@ -76,9 +76,11 @@ def _parse_array_value(value: Any) -> Any:
 
 
 def _prepare_results(df: pd.DataFrame) -> pd.DataFrame:
-    missing = REQUIRED_RESULT_COLUMNS - set(df.columns)
+    missing = REQUIRED_FIT_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(f"Results file is missing required columns: {sorted(missing)}")
+    if not ({"voltage", "current"}.issubset(df.columns) or {"volts", "signal"}.issubset(df.columns)):
+        raise ValueError("Results file must contain array columns voltage/current or legacy volts/signal")
 
     df = df.copy()
     for column in ARRAY_COLUMNS & set(df.columns):

@@ -16,7 +16,7 @@ from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filte
 
 from peak_extraction.config import config
 from peak_extraction.io import get_volts_array
-from peak_extraction.models import ASwiftSettings, FitResult, PolyLinearSettings
+from peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"
@@ -45,9 +45,9 @@ def _validate_trace(volts, current) -> tuple[np.ndarray, np.ndarray]:
     return volts_arr, current_arr
 
 
-def aswift_settings_from_config() -> ASwiftSettings:
+def aswift_settings_from_config() -> AswiftSettings:
     params = config.parameters
-    return ASwiftSettings(
+    return AswiftSettings(
         baseline_boundary=params.baseline_boundary,
         bg_buffer=params.bg_buffer,
         huber_reweight=params.huber_reweight,
@@ -203,7 +203,7 @@ def huber_irls_weights(residuals: np.ndarray, scale, cutoff: float) -> np.ndarra
 def huber_smoother_D2(
     y: np.ndarray,
     lam: float,
-    settings: ASwiftSettings,
+    settings: AswiftSettings,
     base_w: np.ndarray | None = None,
     max_iter: int = 25,
     tol: float = 1e-6,
@@ -337,7 +337,7 @@ def choose_lambda_lcurve(
 def huber_reweighted_lcurve(
     current,
     pilot_smooth,
-    settings: ASwiftSettings,
+    settings: AswiftSettings,
     n_grid=200,
     lam_bounds=(1e-1, 1e8),
 ):
@@ -361,7 +361,7 @@ def huber_reweighted_lcurve(
     return best_lam, best_smooth, params
 
 
-def get_background_range(current, settings: ASwiftSettings, rel_height=1.0):
+def get_background_range(current, settings: AswiftSettings, rel_height=1.0):
     """Find the dominant prominence-based peak window.
 
     ASWIFT assumes one primary redox peak and uses the largest-prominence peak
@@ -389,7 +389,7 @@ def get_background_range(current, settings: ASwiftSettings, rel_height=1.0):
 def choose_lambda_area(
     current,
     volts,
-    settings: ASwiftSettings,
+    settings: AswiftSettings,
     lam_bounds=(1e-1, 1e7),
     search_space=50,
     refine_space=10,
@@ -436,7 +436,7 @@ def choose_lambda_area(
     return best_lam, best_background
 
 
-def fit_derpsalsa_background_iterative(current, volts, settings: ASwiftSettings):
+def fit_derpsalsa_background_iterative(current, volts, settings: AswiftSettings):
     """ASWIFT background fit: smooth the trace, then fit derpsalsa baseline."""
     lam_smoother, smooth, _ = choose_lambda_lcurve(current)
     if settings.huber_reweight:
@@ -450,7 +450,7 @@ def fit_derpsalsa_background_iterative(current, volts, settings: ASwiftSettings)
     return background, peak_indices, smooth
 
 
-def fit_tikhonov_peak(current, volts, background, indices, settings: ASwiftSettings, smooth_current=None):
+def fit_tikhonov_peak(current, volts, background, indices, settings: AswiftSettings, smooth_current=None):
     """ASWIFT peak fit inside the detected background-excluded peak window."""
     peak_region = current[indices] - background[indices]
     peak_lambda_scale = settings.peak_lambda_scale
@@ -487,7 +487,7 @@ def fit_tikhonov_peak(current, volts, background, indices, settings: ASwiftSetti
     return popt, peak_signal, len(popt)
 
 
-def aswift_fit(volts, current, settings: ASwiftSettings | None = None) -> FitResult:
+def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitResult:
     """Fit one SWV trace with ASWIFT.
 
     Parameters are one-dimensional voltage and current arrays. The result
@@ -495,7 +495,7 @@ def aswift_fit(volts, current, settings: ASwiftSettings | None = None) -> FitRes
     background/peak profiles suitable for plotting.
     """
     volts, current = _validate_trace(volts, current)
-    settings = settings or ASwiftSettings()
+    settings = settings or AswiftSettings()
 
     background, peak_indices, smooth_current = fit_derpsalsa_background_iterative(current, volts, settings)
     peak_profile, peak_signal, bg_idx = fit_tikhonov_peak(
@@ -506,6 +506,11 @@ def aswift_fit(volts, current, settings: ASwiftSettings | None = None) -> FitRes
         settings,
         smooth_current=smooth_current,
     )
+
+    peak_window_idx = np.flatnonzero(peak_indices)
+    if peak_window_idx.size == 0:
+        raise ValueError("ASWIFT did not detect a peak window")
+    peak_window = (int(peak_window_idx[0]), int(peak_window_idx[-1]) + 1)
 
     # The reported signal is max_i(p_i - b_i) in the detected peak window.
     peak_idx = int(np.nanargmax(peak_profile))
@@ -520,7 +525,7 @@ def aswift_fit(volts, current, settings: ASwiftSettings | None = None) -> FitRes
         peak_index=peak_idx,
         peak_profile=peak_profile,
         background_profile=background,
-        params={"settings": settings},
+        params={"settings": settings, "peak_window": peak_window},
     )
 
 

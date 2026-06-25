@@ -9,7 +9,7 @@ and full fitted profiles that can be plotted directly.
 pip install -r requirements.txt
 ```
 
-## Fit One Trace
+## Fit one trace
 
 ```python
 import numpy as np
@@ -34,7 +34,7 @@ print(result.peak_signal, result.peak_voltage)
 - `background_profile`: fitted background profile
 - `fitted_current`: `peak_profile + background_profile`
 
-## Plot One Trace
+## Plot one trace
 
 ```python
 from peak_extraction.batch import plot_fit_result
@@ -42,17 +42,17 @@ from peak_extraction.batch import plot_fit_result
 ax = plot_fit_result(result)
 ```
 
-## Fit A DataFrame
+## Fit a structured dataframe
 
-Use long-form data with one row per point:
+Use one row per voltammogram. The `voltage` column contains the full potential
+array for that trace, and `current` contains the full current array:
 
 ```python
-from peak_extraction.batch import fit_dataframe, results_to_signal_table
+from peak_extraction.batch import fit_dataframe, long_form_to_trace_dataframe, results_to_signal_table
 
 results = fit_dataframe(
     df,
     method="aswift",
-    group_cols=["file", "hz", "num", "channel"],
     n_workers=4,
 )
 
@@ -63,16 +63,24 @@ signals = results_to_signal_table(
 )
 ```
 
-Expected long-form columns are:
+Expected columns are:
 
-- `voltage`
-- `current`
-- optional `point`
-- any metadata columns used for grouping, such as `file`, `hz`, `num`, `channel`
+- `voltage`: array-like potentials for one voltammogram
+- `current`: array-like currents for one voltammogram
+- any metadata columns to preserve, such as `file`, `hz`, `num`, `channel`, `time`
 
-Rows can also contain array-like `volts` and `signal` columns, one row per trace.
+Older long-form data with one row per sampled point is still supported for
+compatibility. For that shape, pass `group_cols` to define which rows belong to
+one trace, or convert it first:
 
-## Load Existing Files
+```python
+df = long_form_to_trace_dataframe(
+    legacy_df,
+    group_cols=["file", "hz", "num", "channel", "time"],
+)
+```
+
+## Load existing PalmSens files
 
 ```python
 from peak_extraction.batch import (
@@ -102,7 +110,7 @@ normalized in hours so the earliest measurement is `0.0`.
 Runnable examples live in the top-level `examples/` folder:
 
 - `examples/01_single_fit.ipynb`
-- `examples/02_dataframe_and_csv_batch_fitting.ipynb`
+- `examples/02_csv_workflow.ipynb`
 - `examples/03_pssession_folder_workflow.ipynb`
 
 They are intentionally outside the importable package. The wheel only includes

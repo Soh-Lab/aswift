@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 
 @dataclass(frozen=True)
-class ASwiftSettings:
+class AswiftSettings:
     """Numerical settings for the ASWIFT fit.
 
     ASWIFT first estimates a smooth current trace, uses derpsalsa to estimate
@@ -59,7 +59,7 @@ class FitResult:
 
     def to_record(self, **metadata: Any) -> dict[str, Any]:
         """Return a JSON-friendly row with optional caller-supplied metadata."""
-        return {
+        record = {
             **metadata,
             "method": self.method,
             "success": self.success,
@@ -71,6 +71,11 @@ class FitResult:
             "popt": self.popt.tolist(),
             "bg_idx": self.bg_idx,
         }
+        if "peak_window" in self.params:
+            start, end = self.params["peak_window"]
+            record["peak_window_start"] = int(start)
+            record["peak_window_end"] = int(end)
+        return record
 
     @property
     def bg_idx(self) -> int:

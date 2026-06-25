@@ -1,7 +1,7 @@
 """ASWIFT peak fitting utilities for square-wave voltammetry."""
 
 from peak_extraction.extract_peaks import aswift_fit, fit_signal, poly_linear_fit
-from peak_extraction.models import ASwiftSettings, FitResult, PolyLinearSettings
+from peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
 
 _BATCH_EXPORTS = {
     "SwvTrace",
@@ -12,6 +12,7 @@ _BATCH_EXPORTS = {
     "fit_traces",
     "fit_result_from_row",
     "formatted_csvs_to_dataframe",
+    "long_form_to_trace_dataframe",
     "order_results_dataframe",
     "order_swv_dataframe",
     "plot_fit_result",
@@ -23,7 +24,7 @@ _BATCH_EXPORTS = {
 }
 
 __all__ = [
-    "ASwiftSettings",
+    "AswiftSettings",
     "FitResult",
     "PolyLinearSettings",
     "SwvTrace",
@@ -36,6 +37,7 @@ __all__ = [
     "fit_traces",
     "fit_result_from_row",
     "formatted_csvs_to_dataframe",
+    "long_form_to_trace_dataframe",
     "order_results_dataframe",
     "order_swv_dataframe",
     "plot_fit_result",
