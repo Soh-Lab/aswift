@@ -11,14 +11,14 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(current_file), '..')
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from peak_extraction.config import load_config, config
-from peak_extraction.extract_peaks import (
+from aswift.peak_extraction.config import load_config, config
+from aswift.peak_extraction.extract_peaks import (
     ASWIFT_BACKGROUND_METHOD,
     ASWIFT_PEAK_METHOD,
     calculate_solved_background,
     calculate_solved_peak,
 )
-from peak_extraction.io import read_swv_csv, result_file_name
+from aswift.peak_extraction.io import read_swv_csv, result_file_name
 
 crop_y_axis = True
 

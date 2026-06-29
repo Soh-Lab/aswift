@@ -7,9 +7,8 @@ import re
 from datetime import datetime
 
 import numpy as np
-import pandas as pd
 
-from peak_extraction.config import config
+from .config import config
 
 
 _volts_array_cache = None
@@ -17,6 +16,11 @@ _volts_array_cache = None
 
 def read_swv_csv(path):
     """Read one potentiostat CSV into voltage and channel-current arrays."""
+
+    # Lazy import pandas here instead of in the imports so that core code that doesn't
+    # need this function doesn't pick up pandas by default.
+    import pandas as pd
+    
     df = (
         pd.read_csv(path, skiprows=6, encoding="utf-16")
         .apply(pd.to_numeric, errors="coerce")
@@ -104,7 +108,7 @@ def get_date(file):
     return None
 
 
-def discover_data_folders(input_dir):
+def discover_data_folders(input_dir : str):
     """Yield folders that contain configured SWV CSV filename patterns."""
     hz_pattern = "|".join(str(hz) for hz in config.parameters.hz_values)
     pattern = re.compile(rf"^({hz_pattern})hz-(\d+)\.csv$")

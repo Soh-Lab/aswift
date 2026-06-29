@@ -5,15 +5,21 @@ and full fitted profiles that can be plotted directly.
 
 ## Install
 
+Install the core utilities via pip:
 ```bash
-pip install -r requirements.txt
+pip install aswift
+```
+
+Install the core utilities with visualization via pip:
+```bash
+pip install "aswift[all]"
 ```
 
 ## Fit one trace
 
 ```python
 import numpy as np
-from peak_extraction import aswift_fit, poly_linear_fit
+from aswift import aswift_fit, poly_linear_fit
 
 volts = np.asarray([...], dtype=float)
 current = np.asarray([...], dtype=float)
@@ -37,7 +43,7 @@ print(result.peak_signal, result.peak_voltage)
 ## Plot one trace
 
 ```python
-from peak_extraction.batch import plot_fit_result
+from aswift import plot_fit_result
 
 ax = plot_fit_result(result)
 ```
@@ -48,7 +54,7 @@ Use one row per voltammogram. The `voltage` column contains the full potential
 array for that trace, and `current` contains the full current array:
 
 ```python
-from peak_extraction.batch import fit_dataframe, long_form_to_trace_dataframe, results_to_signal_table
+from aswift import fit_dataframe, long_form_to_trace_dataframe, results_to_signal_table
 
 results = fit_dataframe(
     df,
@@ -83,7 +89,7 @@ df = long_form_to_trace_dataframe(
 ## Load existing PalmSens files
 
 ```python
-from peak_extraction.batch import (
+from aswift import (
     fit_pssession_folder,
     formatted_csvs_to_dataframe,
     pssession_folder_to_dataframe,
@@ -114,7 +120,7 @@ Runnable examples live in the top-level `examples/` folder:
 - `examples/03_pssession_folder_workflow.ipynb`
 
 They are intentionally outside the importable package. The wheel only includes
-`peak_extraction*`, so examples and future notebooks can remain in the GitHub
+`aswift*`, so examples and future notebooks can remain in the GitHub
 repo without being installed for every package user.
 
 ## Legacy CLI
@@ -125,3 +131,12 @@ The previous config-driven workflow is still available:
 python -m peak_extraction.app -c peak_extraction/config/example_config.toml --save
 streamlit run analysis/fit_visualization.py "peak_extraction/config/example_config.toml"
 ```
+## Acknowledgments
+This work was supported by resources provided by the [Soh Lab](https://sohlab.stanford.edu/) 
+within the School of Engineering at Stanford University.
+
+## Author
+* **Max Yates** - *PhD Candidate* - [GitHub Profile](https://github.com/max-giraffe)
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.

@@ -12,9 +12,9 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - only used on Python < 3.11
     import tomli as tomllib
 
-from peak_extraction.config.config_schema import Config
+from .config_schema import Config
 
-config: Config
+config: Optional[Config] = None
 
 
 def load_config(config_path: Optional[str] = None):
@@ -44,7 +44,7 @@ def load_config(config_path: Optional[str] = None):
         logger.error(error_message)
         raise ValueError(error_message)
 
-    if 'config' in globals():
+    if config is not None:
         # Update the existing config object in place
         config.__dict__.update(new_config.__dict__)
     else:
@@ -52,5 +52,11 @@ def load_config(config_path: Optional[str] = None):
         config = new_config
 
 
-# Initial load of the config
-load_config()
+# Optionally load the default config if it exists (for backward compatibility with CLI tools)
+# but do not fail if it doesn't exist (e.g. when importing aswift package)
+_default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_config.toml")
+if os.path.exists(_default_config_path):
+    try:
+        load_config(_default_config_path)
+    except Exception as e:
+        logger.info(f"Could not load default config from {_default_config_path}: {e}")

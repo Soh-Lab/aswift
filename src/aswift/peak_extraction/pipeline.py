@@ -5,10 +5,10 @@ import time
 
 import numpy as np
 
-from peak_extraction.config import config
-from peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, aswift_settings_from_config, fit_signal
-from peak_extraction.io import discover_data_folders, get_date, list_csv_files, read_swv_csv
-from peak_extraction.models import failed_fit_result
+from .config import config
+from .extract_peaks import SUPPORTED_FITTING_METHODS, aswift_settings_from_config, fit_signal
+from .io import discover_data_folders, get_date, list_csv_files, read_swv_csv
+from .models import failed_fit_result
 
 
 def fit_data(path, method: str):

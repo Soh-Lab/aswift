@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from peak_extraction.config import config
-from peak_extraction.io import read_swv_csv, result_file_name
+from .config import config
+from .io import read_swv_csv, result_file_name
 
 
 def generate_detailed_df(times, json_file):

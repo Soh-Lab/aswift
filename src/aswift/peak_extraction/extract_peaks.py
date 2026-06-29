@@ -14,9 +14,9 @@ from pybaselines import Baseline
 from scipy.linalg import solveh_banded
 from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filter
 
-from peak_extraction.config import config
-from peak_extraction.io import get_volts_array
-from peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
+from .config import config
+from .io import get_volts_array
+from .models import AswiftSettings, FitResult, PolyLinearSettings
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"

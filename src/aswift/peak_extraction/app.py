@@ -3,9 +3,9 @@ import logging
 import json
 import argparse
 
-from peak_extraction.config import load_config, config
-from peak_extraction.pipeline import extract_peaks
-from peak_extraction.results import generate_detailed_df, generate_methods_df
+from .config import load_config, config
+from .pipeline import extract_peaks
+from .results import generate_detailed_df, generate_methods_df
 
 
 # Set up logger
