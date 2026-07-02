@@ -78,8 +78,7 @@ From the sidebar, point the viewer to one of:
   columns
 - uploaded simple sweep CSV files with shared voltage in the first column and
   one or more current columns after it, with or without a header row
-- uploaded PalmSens `.pssession` files, or a PalmSens folder path for live
-  refresh
+- a PalmSens folder path containing `.pssession` or `.pssession.mp3` files
 
 For simple sweep CSVs, columns are interpreted as
 `voltage, current_0, current_1, ...`. Each current column is fit as one channel,
@@ -88,17 +87,11 @@ results table. UTF-8, UTF-8 BOM, UTF-16, and Latin-1 encoded CSVs are accepted.
 The older adjacent `current, voltage` pair layout is still accepted as a
 fallback. Multiple uploaded CSVs can be ordered by upload order or file name.
 
-When a `.pssession` folder is selected, the viewer writes these files back into
-that folder and can auto-refresh as new session files are added. Unchanged files
-are reused from the viewer session cache, new or changed files are fit, and
-deleted files are removed from the displayed results. Live refresh checks the
-folder every 2 seconds:
-
-```text
-aswift_fit_results.json
-aswift_signal_table.csv
-```
+For PalmSens data, enter the path to a folder containing `.pssession` or
+`.pssession.mp3` files. Files ending in `.pssession.mp3` are renamed to
+`.pssession` before processing.
+If a fit fails for a trace but raw voltage/current data are available, the
+viewer still plots the raw trace so the failed measurement can be inspected.
 
 A fit-results CSV can be downloaded directly from the bottom of the viewer
-sidebar for uploaded CSV sequences, uploaded `.pssession` files, or live
-`.pssession` folders.
+sidebar for uploaded CSV sequences or PalmSens folder paths.

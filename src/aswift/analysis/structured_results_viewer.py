@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import os
 import sys
 import tempfile
 import time
@@ -19,7 +18,6 @@ import streamlit as st
 
 from aswift.peak_extraction.batch import (
     fit_dataframe,
-    fit_pssession_folder,
     order_results_dataframe,
     plot_fit_result_from_row,
     plot_signal_over_time,
@@ -732,34 +730,6 @@ def _failed_pssession_file_result(path: Path, method: str, exc: Exception) -> pd
     ])
 
 
-@_cache_data_if_streamlit_runtime(show_spinner=False)
-def _load_results_from_pssession_uploads(
-    uploads: tuple[tuple[str, bytes], ...],
-    method: str,
-    n_workers: int | None,
-    csv_order: str,
-) -> pd.DataFrame:
-    if not uploads:
-        raise ValueError("Upload at least one .pssession file.")
-
-    ordered_uploads = _order_uploads(uploads, csv_order)
-    with tempfile.TemporaryDirectory(prefix="aswift-pssession-") as tmp:
-        folder = Path(tmp)
-        for idx, (name, payload) in enumerate(ordered_uploads):
-            safe_name = Path(name).name
-            path = folder / safe_name
-            path.write_bytes(payload)
-            os.utime(path, (idx, idx))
-        _, results = fit_pssession_folder(
-            folder,
-            method=method,
-            n_workers=n_workers,
-            parallel_backend=_parallel_backend_for_workers(n_workers),
-            chunksize=FIT_CHUNKSIZE,
-        )
-    return _prepare_results(results)
-
-
 def _row_label(row: pd.Series) -> str:
     pieces = []
     for column in ("num", "time", "file", "method"):
@@ -983,6 +953,45 @@ def _blank_fit_plot(message: str):
     return fig, ax
 
 
+def _trace_arrays_from_row(row: pd.Series) -> tuple[np.ndarray, np.ndarray] | None:
+    if {"voltage", "current"}.issubset(row.index):
+        x_values = _parse_array_value(row["voltage"])
+        y_values = _parse_array_value(row["current"])
+    elif {"volts", "signal"}.issubset(row.index):
+        x_values = _parse_array_value(row["volts"])
+        y_values = _parse_array_value(row["signal"])
+    else:
+        return None
+
+    try:
+        x = np.asarray(x_values, dtype=float)
+        y = np.asarray(y_values, dtype=float)
+    except (TypeError, ValueError):
+        return None
+
+    if x.ndim != 1 or y.ndim != 1 or x.shape != y.shape:
+        return None
+
+    mask = np.isfinite(x) & np.isfinite(y)
+    if mask.sum() < 2:
+        return None
+    return x[mask], y[mask]
+
+
+def _raw_trace_plot_from_row(row: pd.Series, message: str):
+    arrays = _trace_arrays_from_row(row)
+    if arrays is None:
+        return _blank_fit_plot(message)
+
+    x, y = arrays
+    fig, ax = plt.subplots(figsize=(8, 4.8), constrained_layout=True)
+    ax.plot(x, y, color="tab:blue", linewidth=1.5)
+    ax.set_xlabel("Potential")
+    ax.set_ylabel("Current")
+    ax.grid(True, alpha=0.25)
+    return fig, ax
+
+
 def _empty_result_summary(message: str) -> pd.DataFrame:
     return pd.DataFrame({"field": ["result"], "value": [message]})
 
@@ -1076,32 +1085,30 @@ def main() -> None:
                 )
                 st.session_state[cache_key] = results
         else:
-            uploaded_sessions = st.sidebar.file_uploader(
-                "Upload .pssession files",
-                type=["pssession", "mp3"],
-                accept_multiple_files=True,
-            )
-            folder_text = st.sidebar.text_input("Optional folder path for live refresh", value="")
-            auto_refresh = st.sidebar.checkbox("Auto-refresh folder path", value=bool(folder_text))
-            if uploaded_sessions:
-                uploads = tuple((uploaded.name, uploaded.getvalue()) for uploaded in uploaded_sessions)
-                results = _load_results_from_pssession_uploads(
-                    uploads,
-                    method,
-                    int(n_workers),
-                    upload_order,
-                )
-            elif folder_text:
-                has_live_changes = _live_folder_has_changes(folder_text, method)
-                progress = _StreamlitProgress() if has_live_changes else None
+            folder_text = st.sidebar.text_input(
+                "PalmSens folder path",
+                help="Path to a folder containing .pssession or .pssession.mp3 files.",
+                placeholder="/path/to/pssession/folder",
+            ).strip()
+            if folder_text:
+                folder = Path(folder_text).expanduser()
+                if not folder.exists():
+                    st.error(f"Folder does not exist: {folder}")
+                    st.stop()
+                if not folder.is_dir():
+                    st.error(f"Path is not a folder: {folder}")
+                    st.stop()
+                st.sidebar.caption(f"Selected: {folder.name}")
+                progress = _StreamlitProgress() if _live_folder_has_changes(folder_text, method) else None
                 results = _load_results_from_live_pssession_folder(
                     folder_text,
                     method,
                     int(n_workers),
                     _progress=progress,
                 )
+                _watch_live_pssession_folder(folder_text, method)
             else:
-                st.info("Upload .pssession files, or enter a folder path to watch a live PalmSens folder.")
+                st.info("Enter a folder path containing .pssession or .pssession.mp3 files to begin.")
                 st.stop()
         if progress is not None:
             progress.clear()
@@ -1153,7 +1160,7 @@ def main() -> None:
             fig, ax = _blank_fit_plot("No result for the selected sample.")
             ax.set_title(title)
         elif not bool(selected_row.get("success", True)):
-            fig, ax = _blank_fit_plot("No fit result for the selected sample.")
+            fig, ax = _raw_trace_plot_from_row(selected_row, "No trace data for the selected sample.")
             ax.set_title(f"{title} | {_row_label(selected_row)}")
         else:
             fig, ax = plt.subplots(figsize=(8, 4.8), constrained_layout=True)
@@ -1168,9 +1175,9 @@ def main() -> None:
     with right:
         st.subheader("Selected Fit")
         if selected_row is None:
-            st.dataframe(_empty_result_summary("No result for this frequency/channel/sample."), hide_index=True, use_container_width=True)
+            st.dataframe(_empty_result_summary("No result for this frequency/channel/sample."), hide_index=True)
         else:
-            st.dataframe(_result_summary(selected_row), hide_index=True, use_container_width=True)
+            st.dataframe(_result_summary(selected_row), hide_index=True)
 
     st.markdown('<div class="section-gap"></div>', unsafe_allow_html=True)
 
@@ -1194,9 +1201,6 @@ def main() -> None:
         ax.grid(True, alpha=0.25)
     st.pyplot(fig)
     plt.close(fig)
-
-    if source_kind == "PalmSens .pssession" and folder_text and auto_refresh:
-        _watch_live_pssession_folder(folder_text, method)
 
 
 if __name__ == "__main__":

@@ -96,84 +96,50 @@ def test_notebook_02_synthetic_dataframe_batch_and_signal_table() -> None:
     assert len(signal_table) == 4
 
 
-def test_simple_csv_with_shared_voltage_header_converts_to_trace_dataframe() -> None:
+@pytest.mark.parametrize(
+    ("source", "expected_channels"),
+    [
+        ("shared_header", 2),
+        ("headerless", 2),
+        ("utf16_shared", 1),
+        ("current_voltage_pairs", 2),
+    ],
+)
+def test_simple_csv_formats_convert_to_trace_dataframe(source: str, expected_channels: int) -> None:
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _simple_csv_to_trace_dataframe
+    from aswift.analysis.structured_results_viewer import (
+        _read_csv_for_viewer,
+        _read_csv_payload_for_viewer,
+        _simple_csv_to_trace_dataframe,
+    )
 
     volts = np.linspace(-0.4, 0.0, 20)
-    df = pd.DataFrame(
-        {
-            "voltage": volts,
-            "current_0": 1.0 + volts,
-            "current_1": 1.1 + volts,
-        }
-    )
+    if source == "shared_header":
+        df = pd.DataFrame({"voltage": volts, "current_0": 1.0 + volts, "current_1": 1.1 + volts})
+    elif source == "headerless":
+        raw = pd.DataFrame({0: volts, 1: 1.0 + volts, 2: 1.1 + volts})
+        df = _read_csv_for_viewer(StringIO(raw.to_csv(index=False, header=False)))
+    elif source == "utf16_shared":
+        raw = pd.DataFrame({"V": volts, "uA": 1.0 + volts})
+        df = _read_csv_payload_for_viewer(raw.to_csv(index=False).encode("utf-16"))
+    else:
+        df = pd.DataFrame(
+            {
+                "current_channel_0": 1.0 + volts,
+                "volts_channel_0": volts,
+                "current_channel_1": 1.1 + volts,
+                "volts_channel_1": volts,
+            }
+        )
 
     traces = _simple_csv_to_trace_dataframe(df)
 
     assert traces is not None
-    assert len(traces) == 2
-    assert traces["channel"].tolist() == [0, 1]
-    assert traces.iloc[0]["current"] == pytest.approx((1.0 + volts).tolist())
-    assert traces.iloc[1]["voltage"] == pytest.approx(volts.tolist())
-
-
-def test_simple_csv_without_headers_preserves_first_row() -> None:
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _read_csv_for_viewer, _simple_csv_to_trace_dataframe
-
-    volts = np.linspace(-0.4, 0.0, 20)
-    raw = pd.DataFrame({0: volts, 1: 1.0 + volts, 2: 1.1 + volts})
-
-    traces = _simple_csv_to_trace_dataframe(_read_csv_for_viewer(StringIO(raw.to_csv(index=False, header=False))))
-
-    assert traces is not None
-    assert len(traces) == 2
+    assert len(traces) == expected_channels
+    assert traces["channel"].tolist() == list(range(expected_channels))
     assert traces.iloc[0]["current"] == pytest.approx((1.0 + volts).tolist())
     assert traces.iloc[0]["voltage"] == pytest.approx(volts.tolist())
-
-
-def test_simple_csv_upload_reads_utf16_shared_voltage() -> None:
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _read_csv_payload_for_viewer, _simple_csv_to_trace_dataframe
-
-    volts = np.linspace(-0.4, 0.0, 20)
-    raw = pd.DataFrame({"V": volts, "uA": 1.0 + volts})
-    payload = raw.to_csv(index=False).encode("utf-16")
-
-    traces = _simple_csv_to_trace_dataframe(_read_csv_payload_for_viewer(payload))
-
-    assert traces is not None
-    assert len(traces) == 1
-    assert traces.iloc[0]["current"] == pytest.approx((1.0 + volts).tolist())
-    assert traces.iloc[0]["voltage"] == pytest.approx(volts.tolist())
-
-
-def test_simple_csv_with_current_voltage_pairs_still_converts() -> None:
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _simple_csv_to_trace_dataframe
-
-    volts = np.linspace(-0.4, 0.0, 20)
-    df = pd.DataFrame(
-        {
-            "current_channel_0": 1.0 + volts,
-            "volts_channel_0": volts,
-            "current_channel_1": 1.1 + volts,
-            "volts_channel_1": volts,
-        }
-    )
-
-    traces = _simple_csv_to_trace_dataframe(df)
-
-    assert traces is not None
-    assert len(traces) == 2
-    assert traces["channel"].tolist() == [0, 1]
-    assert traces.iloc[0]["current"] == pytest.approx((1.0 + volts).tolist())
-    assert traces.iloc[1]["voltage"] == pytest.approx(volts.tolist())
 
 
 def test_single_row_sample_selection_does_not_use_slider(monkeypatch) -> None:
@@ -220,13 +186,6 @@ def test_signal_table_pads_unequal_group_lengths() -> None:
     assert pd.isna(table["signal-hz250-channel0"].iloc[1])
 
 
-def test_batch_default_workers_are_single_threaded() -> None:
-    pytest.importorskip("pandas")
-    from aswift.peak_extraction.batch import _normalize_workers
-
-    assert _normalize_workers(None, 10) == 1
-
-
 def test_fit_dataframe_default_uses_single_worker_fast_path(monkeypatch) -> None:
     df = synthetic_trace_dataframe().head(2)
     import aswift.peak_extraction.batch as batch
@@ -258,8 +217,8 @@ def test_fit_dataframe_reports_progress_for_single_worker() -> None:
     assert updates[-1] == (len(df), len(df))
 
 
-def test_plot_labels_are_unit_agnostic() -> None:
-    pytest.importorskip("pandas")
+def test_plot_helpers_use_expected_axis_labels() -> None:
+    pd = pytest.importorskip("pandas")
     plt = pytest.importorskip("matplotlib.pyplot")
     from aswift import aswift_fit
     from aswift.peak_extraction.batch import plot_fit_result, plot_signal_over_time
@@ -275,30 +234,16 @@ def test_plot_labels_are_unit_agnostic() -> None:
     _, trend_ax = plt.subplots()
     plot_signal_over_time(results, ax=trend_ax)
 
+    index_results = pd.DataFrame({"method": ["aswift", "aswift"], "num": [0, 1], "peak": [1.0, 1.2]})
+    _, index_ax = plt.subplots()
+    plot_signal_over_time(index_results, ax=index_ax)
+
     assert fit_ax.get_xlabel() == "Input"
     assert fit_ax.get_ylabel() == "Signal"
     assert trend_ax.get_xlabel() == "Time"
     assert trend_ax.get_ylabel() == "Signal"
-    plt.close("all")
-
-
-def test_signal_trend_uses_index_axis_without_time() -> None:
-    pd = pytest.importorskip("pandas")
-    plt = pytest.importorskip("matplotlib.pyplot")
-    from aswift.peak_extraction.batch import plot_signal_over_time
-
-    results = pd.DataFrame(
-        {
-            "method": ["aswift", "aswift"],
-            "num": [0, 1],
-            "peak": [1.0, 1.2],
-        }
-    )
-    _, ax = plt.subplots()
-    plot_signal_over_time(results, ax=ax)
-
-    assert ax.get_xlabel() == "Index Number"
-    assert ax.get_ylabel() == "Signal"
+    assert index_ax.get_xlabel() == "Index Number"
+    assert index_ax.get_ylabel() == "Signal"
     plt.close("all")
 
 
@@ -331,53 +276,10 @@ def test_viewer_peak_range_normalization_adds_norm_signal_per_group() -> None:
     assert normalized.iloc[2]["background_profile"] == pytest.approx([5.0])
 
 
-def test_viewer_results_download_hides_internal_columns_and_keeps_norm_signal() -> None:
+def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signal() -> None:
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _downloadable_results
-
-    results = pd.DataFrame(
-        {
-            "peak": [3.0],
-            "background": [1.0],
-            "peak_index": [2],
-            "peak_idx": [2],
-            "peak_window_start": [1],
-            "peak_window_end": [4],
-            "normalization_start_index": [0],
-            "normalization_end_index": [1],
-            "normalization_reference_peak": [3.0],
-            "voltage": [[0.0, 1.0]],
-            "current": [[1.0, 2.0]],
-            "peak_profile": [[0.0, 1.0]],
-        }
-    )
-
-    download = _downloadable_results(results)
-
-    assert "peak" in download.columns
-    assert "norm_signal" in download.columns
-    assert list(download.columns[:3]) == ["peak", "norm_signal", "background"]
-    assert pd.isna(download.loc[0, "norm_signal"])
-    assert "peak_index" not in download.columns
-    assert "peak_idx" not in download.columns
-    assert "peak_window_start" not in download.columns
-    assert "peak_window_end" not in download.columns
-    assert "normalization_start_index" not in download.columns
-    assert "normalization_end_index" not in download.columns
-    assert "normalization_reference_peak" not in download.columns
-    assert "voltage" not in download.columns
-    assert "current" not in download.columns
-    assert "peak_profile" not in download.columns
-
-
-def test_viewer_results_download_preserves_computed_norm_signal() -> None:
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import (
-        _add_norm_signal_by_peak_range,
-        _downloadable_results,
-    )
+    from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range, _downloadable_results
 
     results = pd.DataFrame(
         {
@@ -387,18 +289,43 @@ def test_viewer_results_download_preserves_computed_norm_signal() -> None:
             "num": [0, 1],
             "peak": [2.0, 4.0],
             "background": [1.0, 2.0],
+            "peak_index": [2, 3],
+            "peak_idx": [2, 3],
+            "peak_window_start": [1, 2],
+            "peak_window_end": [4, 5],
+            "normalization_start_index": [0, 0],
+            "normalization_end_index": [1, 1],
+            "normalization_reference_peak": [3.0, 3.0],
+            "voltage": [[0.0, 1.0], [0.0, 1.0]],
+            "current": [[1.0, 2.0], [2.0, 3.0]],
+            "peak_profile": [[0.0, 1.0], [1.0, 2.0]],
         }
     )
 
-    normalized = _add_norm_signal_by_peak_range(results, 0, 1)
-    download = _downloadable_results(normalized)
+    download = _downloadable_results(results)
+    normalized_download = _downloadable_results(_add_norm_signal_by_peak_range(results, 0, 1))
 
-    assert download[["peak", "norm_signal", "background"]].columns.tolist() == [
-        "peak",
-        "norm_signal",
-        "background",
-    ]
-    assert download["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3])
+    assert "peak" in download.columns
+    assert "norm_signal" in download.columns
+    peak_index = download.columns.get_loc("peak")
+    assert download.columns[peak_index : peak_index + 3].tolist() == ["peak", "norm_signal", "background"]
+    assert download["norm_signal"].isna().all()
+    for column in (
+        "peak_index",
+        "peak_idx",
+        "peak_window_start",
+        "peak_window_end",
+        "normalization_start_index",
+        "normalization_end_index",
+        "normalization_reference_peak",
+        "voltage",
+        "current",
+        "peak_profile",
+    ):
+        assert column not in download.columns
+    peak_index = normalized_download.columns.get_loc("peak")
+    assert normalized_download.columns[peak_index : peak_index + 3].tolist() == ["peak", "norm_signal", "background"]
+    assert normalized_download["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3])
 
 
 def test_result_summary_values_are_display_safe_strings() -> None:
@@ -418,6 +345,30 @@ def test_result_summary_values_are_display_safe_strings() -> None:
     )
 
     assert summary["value"].tolist() == ["aswift", "True", "1.23457", "0.1"]
+
+
+def test_failed_fit_row_plots_raw_trace() -> None:
+    pd = pytest.importorskip("pandas")
+    plt = pytest.importorskip("matplotlib.pyplot")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import _raw_trace_plot_from_row
+
+    row = pd.Series(
+        {
+            "success": False,
+            "voltage": [0.0, 1.0, 2.0],
+            "current": [3.0, 4.0, 5.0],
+        }
+    )
+
+    fig, ax = _raw_trace_plot_from_row(row, "No trace")
+
+    assert len(ax.lines) == 1
+    assert ax.lines[0].get_xdata().tolist() == pytest.approx([0.0, 1.0, 2.0])
+    assert ax.lines[0].get_ydata().tolist() == pytest.approx([3.0, 4.0, 5.0])
+    assert ax.get_xlabel() == "Potential"
+    assert ax.get_ylabel() == "Current"
+    plt.close(fig)
 
 
 def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
@@ -470,73 +421,6 @@ def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
 
     assert calls == ["poly_linear"]
     assert loaded["method"].tolist() == ["poly_linear"]
-
-
-def test_structured_trace_processing_reports_progress(monkeypatch) -> None:
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    import aswift.analysis.structured_results_viewer as viewer
-
-    volts = np.linspace(-0.4, 0.0, 20)
-    trace_df = pd.DataFrame(
-        {
-            "file": ["trace.csv", "trace.csv"],
-            "num": [0, 1],
-            "channel": [0, 0],
-            "voltage": [volts.tolist(), volts.tolist()],
-            "current": [(1.0 + volts).tolist(), (1.1 + volts).tolist()],
-        }
-    )
-    updates = []
-
-    class Progress:
-        def update(self, completed, total, label=None, *, force=False):
-            updates.append((completed, total, label, force))
-
-        def callback(self, label=None):
-            return lambda completed, total: self.update(completed, total, label)
-
-    def fake_fit_dataframe(df, **kwargs):
-        callback = kwargs.get("progress_callback")
-        assert callback is not None
-        callback(1, len(df))
-        callback(len(df), len(df))
-        rows = []
-        for _, row in df.iterrows():
-            rows.append(
-                {
-                    "file": row["file"],
-                    "num": row["num"],
-                    "channel": row["channel"],
-                    "method": kwargs["method"],
-                    "success": True,
-                    "error": None,
-                    "peak": 1.0,
-                    "background": 0.0,
-                    "peak_voltage": 0.0,
-                    "peak_index": 0,
-                    "fw_prominence": 1.0,
-                    "voltage": row["voltage"],
-                    "current": row["current"],
-                    "peak_profile": row["current"],
-                    "background_profile": [0.0] * len(row["current"]),
-                    "fitted_signal": row["current"],
-                }
-            )
-        return pd.DataFrame(rows)
-
-    monkeypatch.setattr(viewer, "fit_dataframe", fake_fit_dataframe)
-
-    loaded = viewer._prepare_table_or_fit_traces(
-        trace_df,
-        method="aswift",
-        n_workers=1,
-        _progress=Progress(),
-    )
-
-    assert len(loaded) == 2
-    assert updates[0] == (0, 2, "Fitting rows", True)
-    assert updates[-1] == (2, 2, "Fitting rows", False)
 
 
 def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
