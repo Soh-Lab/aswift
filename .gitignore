@@ -12,6 +12,7 @@ dist/
 *.egg-info/
 local_pipelines/
 examples/outputs/
-.idea/
 examples/data/
+release_assets/
+.idea/
 *.zip
