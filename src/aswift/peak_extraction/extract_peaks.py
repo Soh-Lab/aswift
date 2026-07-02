@@ -14,8 +14,6 @@ from pybaselines import Baseline
 from scipy.linalg import solveh_banded
 from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filter
 
-from .config import config
-from .io import get_volts_array
 from .models import AswiftSettings, FitResult, PolyLinearSettings
 
 
@@ -45,19 +43,6 @@ def _validate_trace(volts, current) -> tuple[np.ndarray, np.ndarray]:
     return volts_arr, current_arr
 
 
-def aswift_settings_from_config() -> AswiftSettings:
-    params = config.parameters
-    return AswiftSettings(
-        baseline_boundary=params.baseline_boundary,
-        bg_buffer=params.bg_buffer,
-        huber_reweight=params.huber_reweight,
-        huber_cutoff=params.huber_cutoff,
-        mad_window=params.mad_window,
-        peak_lambda_scale=params.peak_lambda_scale,
-        peak_prominence=params.peak_prominence,
-    )
-
-
 def poly_calculator(volts, *coeffs):
     coeffs = np.asarray(coeffs, dtype=float)
     return np.polyval(coeffs, volts)
@@ -70,9 +55,7 @@ def linear_calculator(volts, coeffs):
 
 def calculate_solved_peak(volts, *peak):
     if isinstance(volts, float):
-        volts_array = get_volts_array()
-        idx = np.argmin(np.abs(volts_array - volts))
-        return list(peak)[idx]
+        raise TypeError("calculate_solved_peak requires an array of voltages.")
 
     peak_data = np.array(list(peak), dtype=float)
     peak_data[peak_data <= 0] = np.nan
@@ -81,11 +64,34 @@ def calculate_solved_peak(volts, *peak):
 
 def calculate_solved_background(volts, background):
     if isinstance(volts, float):
-        volts_array = get_volts_array()
-        idx = np.argmin(np.abs(volts_array - volts))
-        return background[idx]
+        raise TypeError("calculate_solved_background requires an array of voltages.")
 
     return np.asarray(background, dtype=float)
+
+
+def full_width_prominence(volts, signal, peak_idx: int) -> float:
+    """Return full-prominence width in x-axis units using nearest width indices."""
+    volts = np.asarray(volts, dtype=float)
+    signal = np.asarray(signal, dtype=float)
+    peak_idx = int(peak_idx)
+    if peak_idx < 0 or peak_idx >= signal.size or not np.isfinite(signal[peak_idx]):
+        return np.nan
+
+    finite_indices = np.flatnonzero(np.isfinite(signal))
+    if finite_indices.size < 3 or peak_idx not in set(finite_indices):
+        return np.nan
+
+    local_peak = int(np.flatnonzero(finite_indices == peak_idx)[0])
+    local_signal = signal[finite_indices]
+    widths = peak_widths(local_signal, [local_peak], rel_height=1.0)
+    if widths[0][0] <= 0:
+        return np.nan
+
+    left_local = int(np.clip(round(widths[2][0]), 0, finite_indices.size - 1))
+    right_local = int(np.clip(round(widths[3][0]), 0, finite_indices.size - 1))
+    left_idx = int(finite_indices[left_local])
+    right_idx = int(finite_indices[right_local])
+    return float(abs(volts[right_idx] - volts[left_idx]))
 
 
 def make_smoother_D2(size: int):
@@ -481,7 +487,6 @@ def fit_tikhonov_peak(current, volts, background, indices, settings: AswiftSetti
     if peak_signal < 2 * np.mean(np.abs(noise_reference)):
         raise ValueError("Peak smaller than 2 * MAE smoothed fit residuals")
 
-    popt = np.zeros_like(current)
     popt = np.full_like(current, np.nan, dtype=float)
     popt[indices] = peak_fit
     return popt, peak_signal, len(popt)
@@ -523,6 +528,7 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
         peak_background=float(peak_background),
         peak_voltage=float(volts[peak_idx]),
         peak_index=peak_idx,
+        fw_prominence=full_width_prominence(volts, peak_profile, peak_idx),
         peak_profile=peak_profile,
         background_profile=background,
         params={"settings": settings, "peak_window": peak_window},
@@ -576,6 +582,7 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
         peak_background=float(peak_background),
         peak_voltage=float(volts[peak_idx]),
         peak_index=peak_idx,
+        fw_prominence=full_width_prominence(volts, polynomial_fit, peak_idx),
         peak_profile=peak_profile,
         background_profile=background_profile,
         params={

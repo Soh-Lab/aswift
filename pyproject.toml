@@ -20,9 +20,10 @@ dependencies = [
     "numpy>=2.0",
     "scipy>=1.15",
     "pybaselines>=1.2",
-    "pydantic>=2.11",
-    "loguru>=0.7",
 ]
+
+[project.scripts]
+aswift-viewer = "aswift.analysis.viewer_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Soh-Lab/aswift"
@@ -35,14 +36,24 @@ plot = ["matplotlib>=3.10"]
 streamlit = ["streamlit>=1.46", "matplotlib>=3.10"]
 pandas = ["pandas>=2.2"]
 pypalmsens = ["pypalmsens>=1.9.0"]
+test = ["pytest>=8.0", "pandas>=2.2", "matplotlib>=3.10"]
+developer = ["aswift[test]", "loguru==0.7.3", "pydantic==2.11.4"]
 
 all = [
     "aswift[plot]",
     "aswift[streamlit]",
     "aswift[pandas]",
     "aswift[pypalmsens]",
+    "aswift[test]",
+    "aswift[developer]",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["aswift*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+filterwarnings = [
+    "ignore:.*deprecated.*:pyparsing.exceptions.PyparsingDeprecationWarning",
+]
