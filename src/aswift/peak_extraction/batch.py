@@ -5,19 +5,20 @@ from __future__ import annotations
 import os
 import re
 import ast
+import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
-from peak_extraction.io import get_date, read_swv_csv
-from peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
+from .extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
+from .io import get_date, read_swv_csv
+from .models import AswiftSettings, FitResult, failed_fit_result
 
 
 @dataclass(frozen=True)
@@ -33,10 +34,26 @@ def _normalize_workers(n_workers: int | None, n_jobs: int) -> int:
     if n_jobs <= 1:
         return 1
     if n_workers is None:
-        n_workers = max(1, (os.cpu_count() or 1) - 1)
+        n_workers = 1
     if n_workers < 1:
         raise ValueError("n_workers must be >= 1 or None")
     return min(int(n_workers), n_jobs)
+
+
+def _normalize_backend(parallel_backend: str) -> str:
+    backend = parallel_backend.lower()
+    if backend == "pool":
+        backend = "process"
+    if backend not in {"thread", "process", "serial"}:
+        raise ValueError("parallel_backend must be 'thread', 'process', 'pool', or 'serial'")
+    return backend
+
+
+def _normalize_chunksize(chunksize: int) -> int:
+    chunksize = int(chunksize)
+    if chunksize < 1:
+        raise ValueError("chunksize must be >= 1")
+    return chunksize
 
 
 def _parse_array_value(value: Any) -> NDArray[np.float64]:
@@ -190,15 +207,42 @@ def fit_traces(
     method: str = "aswift",
     settings: AswiftSettings | None = None,
     n_workers: int | None = None,
+    parallel_backend: str = "thread",
+    chunksize: int = 16,
+    progress_callback: Callable[[int, int], None] | None = None,
     raise_errors: bool = False,
 ) -> list[FitResult]:
-    """Fit many SWV traces with a thread pool while preserving input order."""
+    """Fit many SWV traces while preserving input order.
+
+    The default single-worker path avoids parallel overhead. For larger batches,
+    ``parallel_backend="process"`` fits independent traces in separate Python
+    processes and batches work with ``chunksize``.
+    """
     if method not in SUPPORTED_FITTING_METHODS:
         raise ValueError(f"method must be one of {SUPPORTED_FITTING_METHODS}")
 
+    parallel_backend = _normalize_backend(parallel_backend)
+    chunksize = _normalize_chunksize(chunksize)
     n_workers = _normalize_workers(n_workers, len(traces))
-    if n_workers == 1:
-        return [_fit_one_trace(trace, method, settings, raise_errors) for trace in traces]
+    total = len(traces)
+    if parallel_backend == "serial" or n_workers == 1:
+        results = []
+        for idx, trace in enumerate(traces, start=1):
+            results.append(_fit_one_trace(trace, method, settings, raise_errors))
+            if progress_callback is not None:
+                progress_callback(idx, total)
+        return results
+
+    if parallel_backend == "process":
+        return _fit_traces_process_pool(
+            traces,
+            method=method,
+            settings=settings,
+            n_workers=n_workers,
+            chunksize=chunksize,
+            progress_callback=progress_callback,
+            raise_errors=raise_errors,
+        )
 
     results: list[FitResult | None] = [None] * len(traces)
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
@@ -206,9 +250,67 @@ def fit_traces(
             executor.submit(_fit_one_trace, trace, method, settings, raise_errors): idx
             for idx, trace in enumerate(traces)
         }
+        completed = 0
         for future in as_completed(futures):
             results[futures[future]] = future.result()
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(completed, total)
 
+    return [result for result in results if result is not None]
+
+
+_PROCESS_METHOD: str | None = None
+_PROCESS_SETTINGS: AswiftSettings | None = None
+_PROCESS_RAISE_ERRORS = False
+
+
+def _init_fit_process(method: str, settings: AswiftSettings | None, raise_errors: bool) -> None:
+    global _PROCESS_METHOD, _PROCESS_SETTINGS, _PROCESS_RAISE_ERRORS
+    _PROCESS_METHOD = method
+    _PROCESS_SETTINGS = settings
+    _PROCESS_RAISE_ERRORS = raise_errors
+
+
+def _fit_trace_process_task(task: tuple[int, NDArray[np.float64], NDArray[np.float64]]) -> tuple[int, FitResult]:
+    idx, volts, current = task
+    if _PROCESS_METHOD is None:
+        raise RuntimeError("process worker was not initialized")
+    try:
+        result = fit_signal(volts, current, _PROCESS_METHOD, settings=_PROCESS_SETTINGS)
+    except Exception as exc:
+        if _PROCESS_RAISE_ERRORS:
+            raise
+        result = failed_fit_result(_PROCESS_METHOD, volts, current, exc)
+    return idx, result
+
+
+def _fit_traces_process_pool(
+    traces: Sequence[SwvTrace],
+    *,
+    method: str,
+    settings: AswiftSettings | None,
+    n_workers: int,
+    chunksize: int,
+    progress_callback: Callable[[int, int], None] | None,
+    raise_errors: bool,
+) -> list[FitResult]:
+    tasks = [
+        (idx, np.asarray(trace.volts, dtype=float), np.asarray(trace.current, dtype=float))
+        for idx, trace in enumerate(traces)
+    ]
+    results: list[FitResult | None] = [None] * len(traces)
+    with mp.Pool(
+        processes=n_workers,
+        initializer=_init_fit_process,
+        initargs=(method, settings, raise_errors),
+    ) as pool:
+        completed = 0
+        for idx, result in pool.imap_unordered(_fit_trace_process_task, tasks, chunksize=chunksize):
+            results[idx] = result
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(completed, len(tasks))
     return [result for result in results if result is not None]
 
 
@@ -232,11 +334,22 @@ def fit_dataframe(
     method: str = "aswift",
     settings: AswiftSettings | None = None,
     n_workers: int | None = None,
+    parallel_backend: str = "thread",
+    chunksize: int = 16,
     group_cols: Sequence[str] | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> pd.DataFrame:
     """Fit all traces in a dataframe and return JSON/CSV-friendly result rows."""
     traces = dataframe_to_traces(df, group_cols=group_cols)
-    fit_results = fit_traces(traces, method=method, settings=settings, n_workers=n_workers)
+    fit_results = fit_traces(
+        traces,
+        method=method,
+        settings=settings,
+        n_workers=n_workers,
+        parallel_backend=parallel_backend,
+        chunksize=chunksize,
+        progress_callback=progress_callback,
+    )
     return fit_results_to_dataframe(fit_results, traces)
 
 
@@ -252,6 +365,7 @@ def fit_results_to_dataframe(results: Sequence[FitResult], traces: Sequence[SwvT
             "background": result.peak_background,
             "peak_voltage": result.peak_voltage,
             "peak_index": result.peak_index,
+            "fw_prominence": result.fw_prominence,
             "voltage": result.volts.tolist(),
             "current": result.current.tolist(),
             "peak_profile": result.peak_profile.tolist(),
@@ -301,8 +415,8 @@ def results_to_signal_table(
         hi = min(calibration_upper_idx + 1, signal.size)
         reference = np.nanmean(signal[lo:hi])
         gain = signal / reference - 1 if np.isfinite(reference) and reference != 0 else np.full_like(signal, np.nan)
-        columns[f"signal-{label}"] = signal
-        columns[f"gain-{label}"] = gain
+        columns[f"signal-{label}"] = pd.Series(signal)
+        columns[f"gain-{label}"] = pd.Series(gain)
 
     return pd.concat([base.reset_index(drop=True), pd.DataFrame(columns)], axis=1)
 
@@ -470,6 +584,9 @@ def fit_pssession_folder(
     method: str = "aswift",
     settings: AswiftSettings | None = None,
     n_workers: int | None = None,
+    parallel_backend: str = "thread",
+    chunksize: int = 16,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read `.pssession` files from a folder and fit each SWV trace.
 
@@ -487,7 +604,10 @@ def fit_pssession_folder(
         method=method,
         settings=settings,
         n_workers=n_workers,
+        parallel_backend=parallel_backend,
+        chunksize=chunksize,
         group_cols=group_cols,
+        progress_callback=progress_callback,
     )
     return df, order_results_dataframe(results)
 
@@ -529,10 +649,11 @@ def plot_signal_over_time(
     time_col: str = "time",
     group_cols: Sequence[str] = ("hz", "channel"),
 ):
-    """Plot fitted peak signal over acquisition time.
+    """Plot fitted peak signal across ordered samples.
 
-    If a relative `time` column is absent, timestamps are converted to hours
-    from the first scan. Lines are split by the requested grouping columns.
+    If a relative `time` column is absent, timestamps are converted to a
+    relative numeric axis from the first scan. Lines are split by the requested
+    grouping columns.
     """
     import matplotlib.pyplot as plt
 
@@ -540,18 +661,31 @@ def plot_signal_over_time(
         raise ValueError(f"results_df must contain {signal_col!r}")
     data = order_results_dataframe(results_df)
 
-    if time_col not in data.columns:
-        if "timestamp" not in data.columns:
-            raise ValueError("results_df must contain either a time or timestamp column")
-        timestamps = pd.to_datetime(data["timestamp"], errors="coerce", utc=True)
-        data[time_col] = (timestamps - timestamps.min()).dt.total_seconds() / 3600
-
-    if ax is None:
-        _, ax = plt.subplots()
-
     valid_group_cols = [col for col in group_cols if col in data.columns]
     if not valid_group_cols:
         valid_group_cols = ["method"] if "method" in data.columns else []
+
+    x_col = time_col
+    x_label = "Time"
+    if x_col not in data.columns:
+        if "timestamp" in data.columns:
+            x_col = "__relative_time"
+            timestamps = pd.to_datetime(data["timestamp"], errors="coerce", utc=True)
+            data[x_col] = (timestamps - timestamps.min()).dt.total_seconds() / 3600
+        else:
+            x_col = "__sample_index"
+            x_label = "Index Number"
+            if valid_group_cols:
+                data[x_col] = data.groupby(valid_group_cols, dropna=False, sort=False).cumcount()
+            else:
+                data[x_col] = np.arange(len(data))
+    elif time_col != "time":
+        x_label = "Index Number"
+    else:
+        x_label = "Time"
+
+    if ax is None:
+        _, ax = plt.subplots()
 
     if valid_group_cols:
         grouped = data.groupby(valid_group_cols, dropna=False, sort=True)
@@ -564,10 +698,10 @@ def plot_signal_over_time(
         label = ", ".join(
             f"{col}={value}" for col, value in zip(valid_group_cols, group_key)
         ) if valid_group_cols else "signal"
-        ax.plot(group[time_col], group[signal_col], marker="o", label=label)
+        ax.plot(group[x_col], group[signal_col], marker="o", label=label)
 
-    ax.set_xlabel("Time (h)")
-    ax.set_ylabel("Peak signal")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Signal")
     ax.legend()
     return ax
 
@@ -663,6 +797,7 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         peak_background=float(row["background"]),
         peak_voltage=float(row["peak_voltage"]),
         peak_index=int(row["peak_index"]),
+        fw_prominence=float(row.get("fw_prominence", np.nan)),
         peak_profile=_parse_array_value(row["peak_profile"]),
         background_profile=_parse_array_value(row["background_profile"]),
         params=params,
@@ -707,8 +842,8 @@ def plot_fit_result(result: FitResult, ax=None):
             linestyle="--",
             label=f"peak = {result.peak_signal:.3g}",
         )
-    ax.set_xlabel("Potential (V)")
-    ax.set_ylabel("Current")
+    ax.set_xlabel("Input")
+    ax.set_ylabel("Signal")
     ax.legend()
     return ax
 

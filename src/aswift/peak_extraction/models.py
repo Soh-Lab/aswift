@@ -47,6 +47,7 @@ class FitResult:
     peak_background: float
     peak_voltage: float
     peak_index: int
+    fw_prominence: float
     peak_profile: NDArray[np.float64]
     background_profile: NDArray[np.float64]
     params: dict[str, Any] = field(default_factory=dict)
@@ -68,6 +69,7 @@ class FitResult:
             "background": self.peak_background,
             "peak_voltage": self.peak_voltage,
             "peak_index": self.peak_index,
+            "fw_prominence": self.fw_prominence,
             "popt": self.popt.tolist(),
             "bg_idx": self.bg_idx,
         }
@@ -104,6 +106,7 @@ def failed_fit_result(
         peak_background=np.nan,
         peak_voltage=np.nan,
         peak_index=-1,
+        fw_prominence=np.nan,
         peak_profile=empty.copy(),
         background_profile=empty.copy(),
         success=False,

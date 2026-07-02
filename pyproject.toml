@@ -5,21 +5,55 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aswift"
 version = "0.1.0"
-description = "ASWIFT peak fitting utilities for square-wave voltammetry."
-readme = "readme.md"
+license = "MIT"
+description = "ASWIFT peak fitting utilities for square-wave voltammetry"
+authors = [
+    {name = "Max Yates", email = "mlyates@stanford.edu"}
+]
+readme = "README.md"
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "numpy>=2.0",
     "scipy>=1.15",
-    "pandas>=2.2",
     "pybaselines>=1.2",
-    "pydantic>=2.11",
-    "loguru>=0.7",
 ]
+
+[project.scripts]
+aswift-viewer = "aswift.analysis.viewer_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Soh-Lab/aswift"
+Repository = "https://github.com/Soh-Lab/aswift"
+Documentation = "https://github.com"
+"Soh Lab Website" = "https://sohlab.stanford.edu/"
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.10"]
 streamlit = ["streamlit>=1.46", "matplotlib>=3.10"]
+pandas = ["pandas>=2.2"]
+pypalmsens = ["pypalmsens>=1.9.0"]
+test = ["pytest>=8.0", "pandas>=2.2", "matplotlib>=3.10"]
+developer = ["aswift[test]", "loguru==0.7.3", "pydantic==2.11.4"]
+
+all = [
+    "aswift[plot]",
+    "aswift[streamlit]",
+    "aswift[pandas]",
+    "aswift[pypalmsens]",
+    "aswift[test]",
+    "aswift[developer]",
+]
 
 [tool.setuptools.packages.find]
-include = ["peak_extraction*"]
+where = ["src"]
+include = ["aswift*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+filterwarnings = [
+    "ignore:.*deprecated.*:pyparsing.exceptions.PyparsingDeprecationWarning",
+]

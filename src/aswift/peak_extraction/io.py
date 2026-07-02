@@ -1,0 +1,47 @@
+"""CSV loading and timestamp helpers for SWV data."""
+
+import csv
+from datetime import datetime
+
+
+def read_swv_csv(path):
+    """Read one potentiostat CSV into voltage and channel-current arrays."""
+
+    # Lazy import pandas here instead of in the imports so that core code that doesn't
+    # need this function doesn't pick up pandas by default.
+    import pandas as pd
+    
+    df = (
+        pd.read_csv(path, skiprows=6, encoding="utf-16")
+        .apply(pd.to_numeric, errors="coerce")
+        .dropna()
+    )
+    volts = df.iloc[:, 0].astype(float).to_numpy()
+    currents = df.iloc[:, 1::2].dropna(how="all").astype(float).to_numpy().T
+    return volts, currents
+
+
+def get_date(file):
+    target = "Date and time measurement:"
+    encodings = ("utf-16", "utf-8-sig")
+
+    for encoding in encodings:
+        try:
+            with open(file, "r", encoding=encoding, newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) < 2:
+                        continue
+
+                    if str(row[0]).strip() != target:
+                        continue
+
+                    date_str = str(row[1]).strip()
+                    try:
+                        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                    except (ValueError, TypeError):
+                        return None
+        except UnicodeError:
+            continue
+
+    return None
