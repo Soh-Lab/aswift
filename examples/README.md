@@ -56,9 +56,16 @@ Batch notebooks can save their fit results as JSON and launch the packaged
 reads fit results, filters by channel and frequency, steps through samples in
 time order, and plots the stored fit profiles.
 
+PalmSens `.pssession` support uses `pypalmsens`, which requires the Microsoft
+.NET 9 Runtime to be installed on the computer. If the viewer reports that it
+failed to create a .NET runtime/CoreCLR, install the .NET 9 Runtime and restart
+the viewer.
+
 After installing with viewer support, open the viewer without preloaded data:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install "aswift[viewer]"
 aswift-viewer
 ```

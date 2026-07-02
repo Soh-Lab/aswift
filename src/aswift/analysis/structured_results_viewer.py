@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import sys
 import tempfile
@@ -54,6 +55,7 @@ SIGNAL_TABLE_NAME = "aswift_signal_table.csv"
 PROGRESS_UPDATE_SECONDS = 0.25
 FIT_CHUNKSIZE = 16
 DOWNLOAD_DROP_COLUMNS = {
+    *ARRAY_COLUMNS,
     "peak_index",
     "peak_idx",
     "peak_window_start",
@@ -62,6 +64,15 @@ DOWNLOAD_DROP_COLUMNS = {
     "normalization_end_index",
     "normalization_reference_peak",
 }
+
+
+def _cache_data_if_streamlit_runtime(**kwargs):
+    def decorator(func):
+        if st.runtime.exists():
+            return st.cache_data(**kwargs)(func)
+        return func
+
+    return decorator
 
 
 def _startup_results_path() -> str:
@@ -291,22 +302,46 @@ def _paired_simple_csv_to_trace_dataframe(
     return pd.DataFrame(rows) if rows else None
 
 
+def _fit_trace_dataframe(
+    trace_df: pd.DataFrame,
+    *,
+    method: str,
+    n_workers: int | None,
+    _progress: _StreamlitProgress | None = None,
+    group_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    if _progress is not None:
+        _progress.update(0, len(trace_df), "Fitting rows", force=True)
+
+    kwargs: dict[str, Any] = {
+        "method": method,
+        "n_workers": n_workers,
+        "parallel_backend": _parallel_backend_for_workers(n_workers),
+        "chunksize": FIT_CHUNKSIZE,
+        "progress_callback": _progress.callback("Fitting rows") if _progress is not None else None,
+    }
+    if group_cols is not None:
+        kwargs["group_cols"] = group_cols
+
+    return fit_dataframe(trace_df, **kwargs)
+
+
 def _prepare_table_or_fit_traces(
     df: pd.DataFrame,
     *,
     source_path: Path | None = None,
     method: str = "aswift",
     n_workers: int | None = None,
+    _progress: _StreamlitProgress | None = None,
 ) -> pd.DataFrame:
     if REQUIRED_FIT_COLUMNS.issubset(df.columns):
         return _prepare_results(df)
     if TRACE_COLUMNS.issubset(df.columns):
-        results = fit_dataframe(
+        results = _fit_trace_dataframe(
             df,
             method=method,
             n_workers=n_workers,
-            parallel_backend=_parallel_backend_for_workers(n_workers),
-            chunksize=FIT_CHUNKSIZE,
+            _progress=_progress,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -314,12 +349,11 @@ def _prepare_table_or_fit_traces(
         return _prepare_results(results)
     simple_df = _simple_csv_to_trace_dataframe(df)
     if simple_df is not None:
-        results = fit_dataframe(
+        results = _fit_trace_dataframe(
             simple_df,
             method=method,
             n_workers=n_workers,
-            parallel_backend=_parallel_backend_for_workers(n_workers),
-            chunksize=FIT_CHUNKSIZE,
+            _progress=_progress,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -330,12 +364,46 @@ def _prepare_table_or_fit_traces(
     )
 
 
-@st.cache_data(show_spinner=False)
-def _load_results_from_upload(
+def _upload_cache_key(
     uploads: tuple[tuple[str, bytes], ...],
     method: str,
     n_workers: int | None,
     csv_order: str,
+) -> tuple:
+    return (
+        "upload_results",
+        method,
+        int(n_workers) if n_workers is not None else None,
+        csv_order,
+        tuple((name, len(payload), _payload_digest(payload)) for name, payload in uploads),
+    )
+
+
+def _startup_cache_key(
+    path_text: str,
+    method: str,
+    n_workers: int | None,
+    signature: tuple[str, int, int],
+) -> tuple:
+    return (
+        "startup_results",
+        method,
+        int(n_workers) if n_workers is not None else None,
+        signature,
+        str(Path(path_text).expanduser()),
+    )
+
+
+def _payload_digest(payload: bytes) -> str:
+    return hashlib.blake2b(payload, digest_size=16).hexdigest()
+
+
+def _load_results_from_upload_impl(
+    uploads: tuple[tuple[str, bytes], ...],
+    method: str,
+    n_workers: int | None,
+    csv_order: str,
+    _progress: _StreamlitProgress | None = None,
 ) -> pd.DataFrame:
     if not uploads:
         raise ValueError("Upload at least one JSON or CSV file.")
@@ -346,7 +414,12 @@ def _load_results_from_upload(
         suffix = Path(name).suffix.lower()
         if suffix == ".json":
             df = pd.read_json(BytesIO(payload))
-            return _prepare_table_or_fit_traces(df, method=method, n_workers=n_workers)
+            return _prepare_table_or_fit_traces(
+                df,
+                method=method,
+                n_workers=n_workers,
+                _progress=_progress,
+            )
         elif suffix == ".csv":
             df = _read_csv_payload_for_viewer(payload)
         else:
@@ -362,12 +435,11 @@ def _load_results_from_upload(
             trace_df["file"] = name
         if "num" not in trace_df.columns:
             trace_df["num"] = 0
-        results = fit_dataframe(
+        results = _fit_trace_dataframe(
             trace_df,
             method=method,
             n_workers=n_workers,
-            parallel_backend=_parallel_backend_for_workers(n_workers),
-            chunksize=FIT_CHUNKSIZE,
+            _progress=_progress,
         )
         return _prepare_results(results, source_kind=SIMPLE_CSV_SOURCE)
 
@@ -398,12 +470,11 @@ def _load_results_from_upload(
         frames.extend(result_frames)
     if trace_frames:
         trace_df = pd.concat(trace_frames, ignore_index=True)
-        results = fit_dataframe(
+        results = _fit_trace_dataframe(
             trace_df,
             method=method,
             n_workers=n_workers,
-            parallel_backend=_parallel_backend_for_workers(n_workers),
-            chunksize=FIT_CHUNKSIZE,
+            _progress=_progress,
         )
         frames.append(_prepare_results(results, source_kind=SIMPLE_CSV_SOURCE))
     if not frames:
@@ -412,6 +483,21 @@ def _load_results_from_upload(
     combined = pd.concat(frames, ignore_index=True)
     source_kind = SIMPLE_CSV_SOURCE if trace_frames and not result_frames else "results"
     return _prepare_results(combined, source_kind=source_kind)
+
+
+@_cache_data_if_streamlit_runtime(show_spinner=False)
+def _load_results_from_upload(
+    uploads: tuple[tuple[str, bytes], ...],
+    method: str,
+    n_workers: int | None,
+    csv_order: str,
+) -> pd.DataFrame:
+    return _load_results_from_upload_impl(
+        uploads,
+        method,
+        n_workers,
+        csv_order,
+    )
 
 
 def _order_uploads(
@@ -423,12 +509,12 @@ def _order_uploads(
     return uploads
 
 
-@st.cache_data(show_spinner=False)
-def _load_results_from_startup_path(
+def _load_results_from_startup_path_impl(
     path_text: str,
     method: str,
     n_workers: int | None,
     signature: tuple[str, int, int],
+    _progress: _StreamlitProgress | None = None,
 ) -> pd.DataFrame:
     del signature
     path = Path(path_text).expanduser()
@@ -441,6 +527,22 @@ def _load_results_from_startup_path(
         _read_table_path_for_viewer(path),
         method=method,
         n_workers=n_workers,
+        _progress=_progress,
+    )
+
+
+@_cache_data_if_streamlit_runtime(show_spinner=False)
+def _load_results_from_startup_path(
+    path_text: str,
+    method: str,
+    n_workers: int | None,
+    signature: tuple[str, int, int],
+) -> pd.DataFrame:
+    return _load_results_from_startup_path_impl(
+        path_text,
+        method,
+        n_workers,
+        signature,
     )
 
 
@@ -504,16 +606,12 @@ def _fit_pssession_dataframes(
         col for col in ["file", "hz", "num", "channel", "timestamp", "time"]
         if col in df.columns
     ]
-    if _progress is not None:
-        _progress.update(0, len(df), "Fitting rows", force=True)
-    return fit_dataframe(
+    return _fit_trace_dataframe(
         df,
         method=method,
         n_workers=n_workers,
-        parallel_backend=_parallel_backend_for_workers(n_workers),
-        chunksize=FIT_CHUNKSIZE,
         group_cols=group_cols,
-        progress_callback=_progress.callback("Fitting rows") if _progress is not None else None,
+        _progress=_progress,
     )
 
 
@@ -634,7 +732,7 @@ def _failed_pssession_file_result(path: Path, method: str, exc: Exception) -> pd
     ])
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data_if_streamlit_runtime(show_spinner=False)
 def _load_results_from_pssession_uploads(
     uploads: tuple[tuple[str, bytes], ...],
     method: str,
@@ -693,7 +791,19 @@ def _result_summary(row: pd.Series) -> pd.DataFrame:
         "file",
     ]
     present = [column for column in columns if column in row.index]
-    return pd.DataFrame({"field": present, "value": [row[column] for column in present]})
+    return pd.DataFrame({"field": present, "value": [_format_summary_value(row[column]) for column in present]})
+
+
+def _format_summary_value(value: Any) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (float, np.floating)):
+        return f"{float(value):.6g}"
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    return str(value)
 
 
 def _inject_style() -> None:
@@ -887,7 +997,6 @@ def _download_results(results: pd.DataFrame) -> None:
     )
 
 
-@st.cache_data(show_spinner=False)
 def _results_csv_bytes(results: pd.DataFrame) -> bytes:
     return _downloadable_results(results).to_csv(index=False).encode("utf-8")
 
@@ -931,12 +1040,19 @@ def main() -> None:
     progress: _StreamlitProgress | None = None
     try:
         if source_kind == "Startup JSON/CSV":
-            results = _load_results_from_startup_path(
-                startup_path,
-                method,
-                int(n_workers),
-                _file_signature(startup_path),
-            )
+            startup_signature = _file_signature(startup_path)
+            cache_key = _startup_cache_key(startup_path, method, int(n_workers), startup_signature)
+            results = st.session_state.get(cache_key)
+            if results is None:
+                progress = _StreamlitProgress()
+                results = _load_results_from_startup_path_impl(
+                    startup_path,
+                    method,
+                    int(n_workers),
+                    startup_signature,
+                    _progress=progress,
+                )
+                st.session_state[cache_key] = results
         elif source_kind == "Upload JSON/CSV":
             uploaded_files = st.sidebar.file_uploader(
                 "Upload",
@@ -947,12 +1063,18 @@ def main() -> None:
                 st.info("Upload fit results, structured trace CSVs, or simple voltage/current CSVs to begin.")
                 st.stop()
             uploads = tuple((uploaded.name, uploaded.getvalue()) for uploaded in uploaded_files)
-            results = _load_results_from_upload(
-                uploads,
-                method,
-                int(n_workers),
-                upload_order,
-            )
+            cache_key = _upload_cache_key(uploads, method, int(n_workers), upload_order)
+            results = st.session_state.get(cache_key)
+            if results is None:
+                progress = _StreamlitProgress()
+                results = _load_results_from_upload_impl(
+                    uploads,
+                    method,
+                    int(n_workers),
+                    upload_order,
+                    _progress=progress,
+                )
+                st.session_state[cache_key] = results
         else:
             uploaded_sessions = st.sidebar.file_uploader(
                 "Upload .pssession files",

@@ -8,11 +8,17 @@ or plot every fitted component.
 """
 
 import math
+import warnings
 
 import numpy as np
 from pybaselines import Baseline
 from scipy.linalg import solveh_banded
 from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filter
+
+try:
+    from scipy.signal._peak_finding_utils import PeakPropertyWarning
+except ImportError:  # pragma: no cover - SciPy may move this warning class.
+    PeakPropertyWarning = RuntimeWarning
 
 from .models import AswiftSettings, FitResult, PolyLinearSettings
 
@@ -83,7 +89,9 @@ def full_width_prominence(volts, signal, peak_idx: int) -> float:
 
     local_peak = int(np.flatnonzero(finite_indices == peak_idx)[0])
     local_signal = signal[finite_indices]
-    widths = peak_widths(local_signal, [local_peak], rel_height=1.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", PeakPropertyWarning)
+        widths = peak_widths(local_signal, [local_peak], rel_height=1.0)
     if widths[0][0] <= 0:
         return np.nan
 

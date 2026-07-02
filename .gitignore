@@ -13,3 +13,5 @@ dist/
 local_pipelines/
 examples/outputs/
 .idea/
+examples/data/
+*.zip

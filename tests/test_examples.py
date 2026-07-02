@@ -347,6 +347,9 @@ def test_viewer_results_download_hides_internal_columns_and_keeps_norm_signal() 
             "normalization_start_index": [0],
             "normalization_end_index": [1],
             "normalization_reference_peak": [3.0],
+            "voltage": [[0.0, 1.0]],
+            "current": [[1.0, 2.0]],
+            "peak_profile": [[0.0, 1.0]],
         }
     )
 
@@ -363,6 +366,9 @@ def test_viewer_results_download_hides_internal_columns_and_keeps_norm_signal() 
     assert "normalization_start_index" not in download.columns
     assert "normalization_end_index" not in download.columns
     assert "normalization_reference_peak" not in download.columns
+    assert "voltage" not in download.columns
+    assert "current" not in download.columns
+    assert "peak_profile" not in download.columns
 
 
 def test_viewer_results_download_preserves_computed_norm_signal() -> None:
@@ -393,6 +399,25 @@ def test_viewer_results_download_preserves_computed_norm_signal() -> None:
         "background",
     ]
     assert download["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3])
+
+
+def test_result_summary_values_are_display_safe_strings() -> None:
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import _result_summary
+
+    summary = _result_summary(
+        pd.Series(
+            {
+                "method": "aswift",
+                "success": np.bool_(True),
+                "peak": np.float64(1.23456789),
+                "background": np.float64(0.1),
+            }
+        )
+    )
+
+    assert summary["value"].tolist() == ["aswift", "True", "1.23457", "0.1"]
 
 
 def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
@@ -445,6 +470,140 @@ def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
 
     assert calls == ["poly_linear"]
     assert loaded["method"].tolist() == ["poly_linear"]
+
+
+def test_structured_trace_processing_reports_progress(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    volts = np.linspace(-0.4, 0.0, 20)
+    trace_df = pd.DataFrame(
+        {
+            "file": ["trace.csv", "trace.csv"],
+            "num": [0, 1],
+            "channel": [0, 0],
+            "voltage": [volts.tolist(), volts.tolist()],
+            "current": [(1.0 + volts).tolist(), (1.1 + volts).tolist()],
+        }
+    )
+    updates = []
+
+    class Progress:
+        def update(self, completed, total, label=None, *, force=False):
+            updates.append((completed, total, label, force))
+
+        def callback(self, label=None):
+            return lambda completed, total: self.update(completed, total, label)
+
+    def fake_fit_dataframe(df, **kwargs):
+        callback = kwargs.get("progress_callback")
+        assert callback is not None
+        callback(1, len(df))
+        callback(len(df), len(df))
+        rows = []
+        for _, row in df.iterrows():
+            rows.append(
+                {
+                    "file": row["file"],
+                    "num": row["num"],
+                    "channel": row["channel"],
+                    "method": kwargs["method"],
+                    "success": True,
+                    "error": None,
+                    "peak": 1.0,
+                    "background": 0.0,
+                    "peak_voltage": 0.0,
+                    "peak_index": 0,
+                    "fw_prominence": 1.0,
+                    "voltage": row["voltage"],
+                    "current": row["current"],
+                    "peak_profile": row["current"],
+                    "background_profile": [0.0] * len(row["current"]),
+                    "fitted_signal": row["current"],
+                }
+            )
+        return pd.DataFrame(rows)
+
+    monkeypatch.setattr(viewer, "fit_dataframe", fake_fit_dataframe)
+
+    loaded = viewer._prepare_table_or_fit_traces(
+        trace_df,
+        method="aswift",
+        n_workers=1,
+        _progress=Progress(),
+    )
+
+    assert len(loaded) == 2
+    assert updates[0] == (0, 2, "Fitting rows", True)
+    assert updates[-1] == (2, 2, "Fitting rows", False)
+
+
+def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    volts = np.linspace(-0.4, 0.0, 20)
+    trace_df = pd.DataFrame(
+        {
+            "file": ["trace.csv", "trace.csv"],
+            "num": [0, 1],
+            "channel": [0, 0],
+            "voltage": [volts.tolist(), volts.tolist()],
+            "current": [(1.0 + volts).tolist(), (1.1 + volts).tolist()],
+        }
+    )
+    updates = []
+
+    class Progress:
+        def update(self, completed, total, label=None, *, force=False):
+            updates.append((completed, total, label, force))
+
+        def callback(self, label=None):
+            return lambda completed, total: self.update(completed, total, label)
+
+    def fake_fit_dataframe(df, **kwargs):
+        callback = kwargs.get("progress_callback")
+        assert callback is not None
+        callback(len(df), len(df))
+        rows = []
+        for _, row in df.iterrows():
+            rows.append(
+                {
+                    "file": row["file"],
+                    "num": row["num"],
+                    "channel": row["channel"],
+                    "method": kwargs["method"],
+                    "success": True,
+                    "error": None,
+                    "peak": 1.0,
+                    "background": 0.0,
+                    "peak_voltage": 0.0,
+                    "peak_index": 0,
+                    "fw_prominence": 1.0,
+                    "voltage": row["voltage"],
+                    "current": row["current"],
+                    "peak_profile": row["current"],
+                    "background_profile": [0.0] * len(row["current"]),
+                    "fitted_signal": row["current"],
+                }
+            )
+        return pd.DataFrame(rows)
+
+    monkeypatch.setattr(viewer, "fit_dataframe", fake_fit_dataframe)
+
+    loaded = viewer._load_results_from_upload_impl(
+        (("trace.csv", trace_df.to_csv(index=False).encode("utf-8")),),
+        "aswift",
+        1,
+        "Uploaded order",
+        _progress=Progress(),
+    )
+
+    assert len(loaded) == 2
+    assert updates[0] == (0, 2, "Fitting rows", True)
+    assert updates[-1] == (2, 2, "Fitting rows", False)
 
 
 def test_viewer_uses_process_backend_only_when_workers_exceed_one() -> None:
