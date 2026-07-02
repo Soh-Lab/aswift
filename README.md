@@ -10,9 +10,10 @@ Install the core utilities via pip:
 pip install aswift
 ```
 
-Install the core utilities with visualization via pip:
+Install the core utilities with the Streamlit viewer, pandas CSV helpers, and
+PalmSens `.pssession` support via pip:
 ```bash
-pip install "aswift[all]"
+pip install "aswift[viewer]"
 ```
 
 ## Fit one trace
@@ -50,10 +51,10 @@ ax = plot_fit_result(result)
 
 ## Open the Streamlit viewer
 
-Install with Streamlit support:
+Install with viewer support:
 
 ```bash
-pip install "aswift[streamlit]"
+pip install "aswift[viewer]"
 ```
 
 Then launch the viewer with no preloaded data:
@@ -97,11 +98,11 @@ From the repository root:
 NUMBA_CACHE_DIR=/private/tmp/numba-cache python -m pytest -q
 ```
 
-If your active environment has binary package conflicts, install the test extras
-in the project virtual environment, then run the same tests there:
+If your active environment has binary package conflicts, install the developer
+extra in the project virtual environment, then run the same tests there:
 
 ```bash
-venv/bin/python -m pip install -e ".[test,streamlit]"
+venv/bin/python -m pip install -e ".[developer]"
 PYTHONPATH=src MPLCONFIGDIR=/private/tmp/mpl-cache venv/bin/python -m pytest -q
 ```
 

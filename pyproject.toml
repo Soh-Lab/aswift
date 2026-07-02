@@ -33,18 +33,20 @@ Documentation = "https://github.com"
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.10"]
-streamlit = ["streamlit>=1.46", "matplotlib>=3.10"]
-pandas = ["pandas>=2.2"]
-pypalmsens = ["pypalmsens>=1.9.0"]
-test = ["pytest>=8.0", "pandas>=2.2", "matplotlib>=3.10"]
-developer = ["aswift[test]", "loguru==0.7.3", "pydantic==2.11.4"]
+viewer = [
+    "matplotlib>=3.10",
+    "pandas>=2.2",
+    "pypalmsens>=1.9.0",
+    "streamlit>=1.46",
+]
+developer = [
+    "aswift[viewer]",
+    "pytest>=8.0",
+    "loguru==0.7.3",
+    "pydantic==2.11.4",
+]
 
 all = [
-    "aswift[plot]",
-    "aswift[streamlit]",
-    "aswift[pandas]",
-    "aswift[pypalmsens]",
-    "aswift[test]",
     "aswift[developer]",
 ]
 

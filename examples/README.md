@@ -56,10 +56,10 @@ Batch notebooks can save their fit results as JSON and launch the packaged
 reads fit results, filters by channel and frequency, steps through samples in
 time order, and plots the stored fit profiles.
 
-After installing with Streamlit support, open the viewer without preloaded data:
+After installing with viewer support, open the viewer without preloaded data:
 
 ```bash
-pip install "aswift[streamlit]"
+pip install "aswift[viewer]"
 aswift-viewer
 ```
 

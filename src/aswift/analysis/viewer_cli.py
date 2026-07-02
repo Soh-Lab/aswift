@@ -12,10 +12,9 @@ def main() -> None:
         from streamlit.web.cli import main as streamlit_main
     except ImportError as exc:
         raise SystemExit(
-            "The ASWIFT viewer requires Streamlit. Install it with: pip install 'aswift[streamlit]'"
+            "The ASWIFT viewer requires the viewer extra. Install it with: pip install 'aswift[viewer]'"
         ) from exc
 
     viewer = Path(__file__).with_name("structured_results_viewer.py")
     sys.argv = ["streamlit", "run", str(viewer), *sys.argv[1:]]
     streamlit_main()
-
