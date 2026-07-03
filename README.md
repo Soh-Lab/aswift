@@ -59,8 +59,8 @@ ax = plot_fit_result(result)
 Install with viewer support:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install "aswift[viewer]"
 ```
 
