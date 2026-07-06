@@ -76,7 +76,7 @@ def test_notebook_02_synthetic_dataframe_batch_and_signal_table() -> None:
     assert elapsed < 20.0
     assert len(results) == len(df)
     assert results["success"].all()
-    assert set(["hz", "num", "channel", "peak", "peak_voltage"]).issubset(results.columns)
+    assert {"hz", "num", "channel", "peak", "peak_voltage"}.issubset(results.columns)
     assert results["peak"].between(0.2, 0.7).all()
     assert "fw_prominence" in results.columns
     assert results["fw_prominence"].notna().all()
@@ -154,7 +154,7 @@ def test_single_row_sample_selection_does_not_use_slider(monkeypatch) -> None:
         def caption(self, text: str) -> None:
             assert text == "Sample index: 0"
 
-        def slider(self, *args, **kwargs) -> int:
+        def slider(self, *_args, **_kwargs) -> int:
             self.slider_called = True
             raise AssertionError("slider should not be used for one row")
 
@@ -190,7 +190,7 @@ def test_fit_dataframe_default_uses_single_worker_fast_path(monkeypatch) -> None
     df = synthetic_trace_dataframe().head(2)
     import aswift.workflow.batch as batch
 
-    def fail_process_pool(*args, **kwargs):
+    def fail_process_pool(*_args, **_kwargs):
         raise AssertionError("default fit_dataframe should not use process workers")
 
     monkeypatch.setattr(batch, "_fit_traces_process_pool", fail_process_pool)
@@ -220,8 +220,7 @@ def test_fit_dataframe_reports_progress_for_single_worker() -> None:
 def test_plot_helpers_use_expected_axis_labels() -> None:
     pd = pytest.importorskip("pandas")
     plt = pytest.importorskip("matplotlib.pyplot")
-    from aswift import aswift_fit
-    from aswift.workflow.batch import plot_fit_result, plot_signal_over_time
+    from aswift import aswift_fit, plot_fit_result, plot_signal_over_time
 
     volts, current = synthetic_single_trace()
     result = aswift_fit(volts, current)
@@ -385,7 +384,7 @@ def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
     )
     calls = []
 
-    def fake_fit_dataframe(df, **kwargs):
+    def fake_fit_dataframe(_df, **kwargs):
         calls.append(kwargs["method"])
         return pd.DataFrame(
             [
@@ -596,11 +595,11 @@ def test_live_pssession_new_files_are_fit_in_one_batch(tmp_path, monkeypatch) ->
 
     monkeypatch.setattr(viewer.st, "session_state", {})
 
-    def fake_file_to_dataframe(path):
+    def fake_file_to_dataframe(f):
         return pd.DataFrame(
             [
                 {
-                    "file": path.name,
+                    "file": f.name,
                     "num": 0,
                     "channel": 0,
                     "voltage": [0.0, 1.0],

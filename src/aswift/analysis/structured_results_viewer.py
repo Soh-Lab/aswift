@@ -19,12 +19,11 @@ import streamlit as st
 from aswift.workflow.batch import (
     fit_dataframe,
     order_results_dataframe,
-    plot_fit_result_from_row,
-    plot_signal_over_time,
     pssession_folder_to_dataframe,
     results_to_signal_table,
     strip_mp3_suffix_from_pssession_files,
 )
+from .plots import plot_fit_result_from_row, plot_signal_over_time
 
 ARRAY_COLUMNS = {
     "voltage",
