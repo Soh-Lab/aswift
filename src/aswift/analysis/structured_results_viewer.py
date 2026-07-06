@@ -23,7 +23,8 @@ from aswift.workflow.batch import (
     results_to_signal_table,
     strip_mp3_suffix_from_pssession_files,
 )
-from .plots import plot_fit_result_from_row, plot_signal_over_time
+
+from aswift.analysis.plots import plot_fit_result_from_row, plot_signal_over_time
 
 ARRAY_COLUMNS = {
     "voltage",

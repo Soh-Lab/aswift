@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from ..peak_extraction.models import FitResult
-from ..workflow.batch import fit_result_from_row, order_results_dataframe
+from aswift.peak_extraction.models import FitResult
+from aswift.workflow.batch import fit_result_from_row, order_results_dataframe
 
 
 def plot_signal_over_time(

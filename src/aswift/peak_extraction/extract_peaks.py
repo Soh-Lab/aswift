@@ -21,7 +21,7 @@ try:
 except ImportError:  # pragma: no cover - SciPy may move this warning class.
     PeakPropertyWarning = RuntimeWarning
 
-from .models import AswiftSettings, FitResult, PolyLinearSettings
+from aswift.peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"
