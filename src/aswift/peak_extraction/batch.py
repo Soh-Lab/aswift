@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, cast
 
 import numpy as np
 import pandas as pd
@@ -406,7 +406,7 @@ def results_to_signal_table(
     for group_key, group in results_df.groupby(valid_group_cols, dropna=False, sort=True):
         if not isinstance(group_key, tuple):
             group_key = (group_key,)
-        label = "-".join(f"{col}{value}" for col, value in zip(valid_group_cols, group_key))
+        label = "-".join(f"{col}{cast(Any, value)}" for col, value in zip(valid_group_cols, group_key))
         if order_col in group.columns:
             group = group.sort_values(order_col)
 
@@ -460,7 +460,7 @@ def formatted_csvs_to_dataframe(
         )
 
         volts, currents = read_swv_csv(str(path))
-        trace_type = "full" if np.nanmin(volts) < 1.0 else "partial"
+        trace_type = "full" if float(np.nanmin(volts)) < 1.0 else "partial"
         for channel, current in enumerate(currents):
             rows.append({
                 "folder": str(folder),
@@ -487,13 +487,14 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
     and net current arrays, preserving file, timestamp, frequency, and channel.
     """
     try:
+        # noinspection PyPackageRequirements
         import pypalmsens as ps
     except ImportError as exc:
         raise ImportError("pssession support requires the optional pypalmsens package") from exc
 
     folder = Path(folder)
     strip_mp3_suffix_from_pssession_files(folder)
-    files = sorted(folder.glob("*.pssession"), key=lambda path: path.stat().st_mtime)
+    files = sorted(folder.glob("*.pssession"), key=lambda f: f.stat().st_mtime)
     if not files:
         raise ValueError(f"No .pssession files found in {folder}")
 
@@ -616,7 +617,7 @@ def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Sort SWV trace rows by time, frequency, trace number, and channel."""
     df = df.copy()
     if "timestamp" in df.columns:
-        parsed = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        parsed = cast(pd.Series, pd.to_datetime(df["timestamp"], errors="coerce", utc=True))
         df["timestamp"] = parsed
         if "time" not in df.columns and parsed.notna().any():
             first = parsed.min()
@@ -783,10 +784,12 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         error = None
 
     params = {}
+    # noinspection PyPackages
     if "peak_window_start" in row and "peak_window_end" in row:
         start = row.get("peak_window_start")
         end = row.get("peak_window_end")
         if pd.notna(start) and pd.notna(end):
+            # noinspection PyTypeChecker
             params["peak_window"] = (int(start), int(end))
 
     return FitResult(

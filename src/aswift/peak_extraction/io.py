@@ -12,7 +12,7 @@ def read_swv_csv(path):
     import pandas as pd
     
     df = (
-        pd.read_csv(path, skiprows=6, encoding="utf-16")
+        pd.read_csv(path, skiprows=6, encoding="utf-16")  # type: ignore[union-attr]
         .apply(pd.to_numeric, errors="coerce")
         .dropna()
     )
