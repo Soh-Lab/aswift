@@ -5,6 +5,15 @@ and full fitted profiles that can be plotted directly.
 
 ## Install
 
+For researchers who do not use Python, publish the prebuilt ASWIFT Viewer zips
+from `release_assets` with each GitHub release. The release workflow builds
+Windows and macOS apps that include Python, Streamlit, ASWIFT, and an app-local
+.NET 9 runtime for PalmSens `.pssession` support. Users unzip the file for
+their computer and double-click `ASWIFT Viewer` to open the app in a browser.
+The desktop packaging source lives in `packaging/desktop`; see
+[`release_assets/README.md`](release_assets/README.md) for the release builder
+workflow and signing notes.
+
 Install the core utilities via pip:
 ```bash
 pip install aswift
