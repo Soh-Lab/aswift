@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from aswift.peak_extraction.batch import (
+from aswift.workflow.batch import (
     fit_dataframe,
     order_results_dataframe,
     plot_fit_result_from_row,

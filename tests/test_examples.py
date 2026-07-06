@@ -188,7 +188,7 @@ def test_signal_table_pads_unequal_group_lengths() -> None:
 
 def test_fit_dataframe_default_uses_single_worker_fast_path(monkeypatch) -> None:
     df = synthetic_trace_dataframe().head(2)
-    import aswift.peak_extraction.batch as batch
+    import aswift.workflow.batch as batch
 
     def fail_process_pool(*args, **kwargs):
         raise AssertionError("default fit_dataframe should not use process workers")
@@ -221,7 +221,7 @@ def test_plot_helpers_use_expected_axis_labels() -> None:
     pd = pytest.importorskip("pandas")
     plt = pytest.importorskip("matplotlib.pyplot")
     from aswift import aswift_fit
-    from aswift.peak_extraction.batch import plot_fit_result, plot_signal_over_time
+    from aswift.workflow.batch import plot_fit_result, plot_signal_over_time
 
     volts, current = synthetic_single_trace()
     result = aswift_fit(volts, current)
