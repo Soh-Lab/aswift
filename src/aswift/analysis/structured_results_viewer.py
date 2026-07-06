@@ -9,22 +9,22 @@ import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-from aswift.peak_extraction.batch import (
+from aswift.workflow.batch import (
     fit_dataframe,
     order_results_dataframe,
-    plot_fit_result_from_row,
-    plot_signal_over_time,
     pssession_folder_to_dataframe,
     results_to_signal_table,
     strip_mp3_suffix_from_pssession_files,
 )
+
+from aswift.analysis.plots import plot_fit_result_from_row, plot_signal_over_time
 
 ARRAY_COLUMNS = {
     "voltage",
@@ -176,7 +176,7 @@ def _read_csv_with_encoding_fallback(source, **kwargs) -> pd.DataFrame:
         try:
             if hasattr(source, "seek"):
                 source.seek(0)
-            return pd.read_csv(source, encoding=encoding, **kwargs)
+            return pd.read_csv(source, encoding=encoding, **kwargs)  # type: ignore[return-value]
         except UnicodeError as exc:
             last_error = exc
             continue
@@ -507,6 +507,7 @@ def _order_uploads(
     return uploads
 
 
+# noinspection PyUnusedLocal
 def _load_results_from_startup_path_impl(
     path_text: str,
     method: str,
@@ -547,12 +548,12 @@ def _load_results_from_startup_path(
 def _file_signature(path_text: str) -> tuple[str, int, int]:
     path = Path(path_text).expanduser()
     stat = path.stat()
-    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    return str(path.resolve()), stat.st_mtime_ns, stat.st_size
 
 
 def _pssession_file_key(path: Path) -> tuple[str, int, int]:
     stat = path.stat()
-    return (path.name, stat.st_mtime_ns, stat.st_size)
+    return path.name, stat.st_mtime_ns, stat.st_size
 
 
 def _live_folder_signature_key(folder: Path, method: str) -> str:
@@ -700,7 +701,7 @@ def _normalize_result_time(results: pd.DataFrame) -> pd.DataFrame:
     if "timestamp" not in results.columns:
         return results
     normalized = results.copy()
-    timestamps = pd.to_datetime(normalized["timestamp"], errors="coerce", utc=True)
+    timestamps = cast(pd.Series, pd.to_datetime(normalized["timestamp"], errors="coerce", utc=True))
     normalized["timestamp"] = timestamps
     if timestamps.notna().any():
         normalized["time"] = (timestamps - timestamps.min()).dt.total_seconds() / 3600
@@ -733,6 +734,7 @@ def _failed_pssession_file_result(path: Path, method: str, exc: Exception) -> pd
 def _row_label(row: pd.Series) -> str:
     pieces = []
     for column in ("num", "time", "file", "method"):
+        # noinspection PyPackages
         if column not in row or pd.isna(row[column]):
             continue
         value = row[column]
@@ -740,7 +742,7 @@ def _row_label(row: pd.Series) -> str:
             pieces.append(f"time={float(value):.3g}")
         else:
             pieces.append(f"{column}={value}")
-    return ", ".join(pieces) or f"row={row.name}"
+    return ", ".join(pieces) or f"row={cast(Any, row.name)}"
 
 
 def _result_summary(row: pd.Series) -> pd.DataFrame:
@@ -940,7 +942,7 @@ def _filter_selected_results(
     )
     if selected_sample is not None:
         for column, value in selected_sample.items():
-            if column.startswith("__") or column not in filtered.columns:
+            if cast(Any, column).startswith("__") or column not in filtered.columns:
                 continue
             filtered = filtered[filtered[column] == value]
     return filtered
@@ -1144,7 +1146,7 @@ def main() -> None:
     sort_cols = [col for col in ("time", "timestamp", "num", "file", "method") if col in filtered.columns]
     if sort_cols and not filtered.empty:
         filtered = filtered.sort_values(sort_cols)
-    selected_row = filtered.iloc[0] if not filtered.empty else None
+    selected_row: pd.Series | None = filtered.iloc[0] if not filtered.empty else None
 
     title_parts = []
     if selected_channel is not None:

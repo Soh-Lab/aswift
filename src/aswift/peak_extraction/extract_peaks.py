@@ -16,11 +16,12 @@ from scipy.linalg import solveh_banded
 from scipy.signal import find_peaks, peak_prominences, peak_widths, savgol_filter
 
 try:
+    # noinspection PyProtectedMember
     from scipy.signal._peak_finding_utils import PeakPropertyWarning
 except ImportError:  # pragma: no cover - SciPy may move this warning class.
     PeakPropertyWarning = RuntimeWarning
 
-from .models import AswiftSettings, FitResult, PolyLinearSettings
+from aswift.peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"
@@ -89,19 +90,21 @@ def full_width_prominence(volts, signal, peak_idx: int) -> float:
 
     local_peak = int(np.flatnonzero(finite_indices == peak_idx)[0])
     local_signal = signal[finite_indices]
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(record=False):
         warnings.simplefilter("ignore", PeakPropertyWarning)
         widths = peak_widths(local_signal, [local_peak], rel_height=1.0)
     if widths[0][0] <= 0:
         return np.nan
 
     left_local = int(np.clip(round(widths[2][0]), 0, finite_indices.size - 1))
+    # noinspection PyTypeChecker
     right_local = int(np.clip(round(widths[3][0]), 0, finite_indices.size - 1))
     left_idx = int(finite_indices[left_local])
     right_idx = int(finite_indices[right_local])
     return float(abs(volts[right_idx] - volts[left_idx]))
 
 
+# noinspection PyPep8Naming
 def make_smoother_D2(size: int):
     """Create a second-derivative Tikhonov smoother.
 
@@ -155,7 +158,7 @@ def mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> float:
     residuals = np.asarray(residuals, dtype=float)
     med = np.median(residuals)
     mad = np.median(np.abs(residuals - med))
-    return 1.4826 * mad + eps
+    return 1.4826 * float(mad) + eps
 
 
 def rolling_mad_scale(residuals: np.ndarray, window: int, eps: float = 1e-12) -> np.ndarray:
@@ -214,6 +217,7 @@ def huber_irls_weights(residuals: np.ndarray, scale, cutoff: float) -> np.ndarra
     return weights
 
 
+# noinspection PyPep8Naming
 def huber_smoother_D2(
     y: np.ndarray,
     lam: float,
@@ -246,8 +250,8 @@ def huber_smoother_D2(
         new_weights = np.maximum(base_w * robust_weights, min_w)
         new_smooth = smoother(y, lam, new_weights)
 
-        denom = np.linalg.norm(smooth) + 1e-12
-        if np.linalg.norm(new_smooth - smooth) / denom < tol:
+        denom = float(np.linalg.norm(smooth)) + 1e-12
+        if float(np.linalg.norm(new_smooth - smooth)) / denom < tol:
             return new_smooth, new_weights
 
         smooth, weights = new_smooth, new_weights
@@ -277,9 +281,9 @@ def choose_lambda_lcurve(
     if weights is not None and not np.all(np.isfinite(weights)):
         raise ValueError("weights contains NaN or inf.")
 
-    value_scale = np.nanmedian(np.abs(values))
+    value_scale = float(np.nanmedian(np.abs(values)))
     if not np.isfinite(value_scale) or value_scale <= 0:
-        value_scale = np.nanmax(np.abs(values))
+        value_scale = float(np.nanmax(np.abs(values)))
     if not np.isfinite(value_scale) or value_scale <= 0:
         value_scale = 1.0
 
@@ -298,7 +302,7 @@ def choose_lambda_lcurve(
             residual = scaled_values - smooth
             residual_norm[i] = np.sum(residual**2 if weights is None else weights * residual**2)
             roughness_norm[i] = np.sum(np.diff(smooth, n=2) ** 2)
-        except Exception:
+        except np.linalg.LinAlgError:  # ValueError for bad input data is still raised
             continue
 
     valid = (
@@ -332,7 +336,7 @@ def choose_lambda_lcurve(
         candidate_idx = np.where(finite)[0]
         best_idx = candidate_idx[np.argmax(np.abs(curvature[candidate_idx]))]
 
-    best_lam = valid_lambdas[best_idx]
+    best_lam = float(valid_lambdas[best_idx])
     best_smooth = smoother(scaled_values, best_lam, weights) * value_scale
     params = {
         "lambdas": lambdas,
@@ -392,6 +396,7 @@ def get_background_range(current, settings: AswiftSettings, rel_height=1.0):
     padding = math.ceil(boundary * len(current))
 
     widths = peak_widths(current, [best_peak], rel_height=min(rel_height, 1.0))
+    # noinspection PyTypeChecker
     lower, upper = math.floor(widths[2][0]), math.ceil(widths[3][0])
     idx_bound = max(best_peak - lower, upper - best_peak) + settings.bg_buffer
     lower = max(best_peak - idx_bound, padding)
@@ -431,9 +436,9 @@ def choose_lambda_area(
     def eval_grid(lam_lo, lam_hi, n):
         lam_lo = max(lam_lo, np.finfo(float).tiny)
         lam_hi = max(lam_hi, lam_lo * 1e3)
-        lambdas = np.logspace(np.log10(lam_lo), np.log10(lam_hi), n)
-        areas = np.array([lambda_area(lam) for lam in lambdas])
-        return lambdas, areas
+        grid_lambdas = np.logspace(np.log10(lam_lo), np.log10(lam_hi), n)
+        grid_areas = np.array([lambda_area(lam) for lam in grid_lambdas])
+        return grid_lambdas, grid_areas
 
     lambdas, areas = eval_grid(lam_bounds[0], lam_bounds[1], search_space)
     min_idx = np.argmin(areas)
@@ -464,7 +469,7 @@ def fit_derpsalsa_background_iterative(current, volts, settings: AswiftSettings)
     return background, peak_indices, smooth
 
 
-def fit_tikhonov_peak(current, volts, background, indices, settings: AswiftSettings, smooth_current=None):
+def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, smooth_current=None):
     """ASWIFT peak fit inside the detected background-excluded peak window."""
     peak_region = current[indices] - background[indices]
     peak_lambda_scale = settings.peak_lambda_scale
@@ -513,7 +518,6 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
     background, peak_indices, smooth_current = fit_derpsalsa_background_iterative(current, volts, settings)
     peak_profile, peak_signal, bg_idx = fit_tikhonov_peak(
         current,
-        volts,
         background,
         peak_indices,
         settings,
@@ -562,6 +566,7 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
     if len(peak_idxs) == 0:
         raise ValueError("No peaks found.")
 
+    # noinspection PyTupleAssignmentBalance
     prominences, left_bases, right_bases = peak_prominences(polynomial_fit, peak_idxs)
     best = int(np.argmax(prominences))
     peak_idx = int(peak_idxs[best])
@@ -579,8 +584,8 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
     slope, intercept = baseline_coeffs
     adjusted_polynomial[-2] -= slope
     adjusted_polynomial[-1] -= intercept
-    peak_profile = np.polyval(adjusted_polynomial, volts)
-    background_profile = np.polyval(baseline_coeffs, volts)
+    peak_profile = np.asarray(np.polyval(adjusted_polynomial, volts), dtype=np.float64)
+    background_profile = np.asarray(np.polyval(baseline_coeffs, volts), dtype=np.float64)
 
     return FitResult(
         method="poly_linear",

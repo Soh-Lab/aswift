@@ -13,6 +13,7 @@ dist/
 local_pipelines/
 examples/outputs/
 examples/data/
-release_assets/
+release_assets/*.zip
+!release_assets/README.md
 .idea/
 *.zip

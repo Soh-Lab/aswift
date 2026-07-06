@@ -1,4 +1,4 @@
-"""Batch conversion, fitting, and plotting helpers for SWV datasets."""
+"""Batch conversion, fitting, and I/O helpers for SWV datasets."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, cast
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from .extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
-from .io import get_date, read_swv_csv
-from .models import AswiftSettings, FitResult, failed_fit_result
+from aswift.peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
+from aswift.peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
+from aswift.workflow.io import get_date, read_swv_csv
 
 
 @dataclass(frozen=True)
@@ -406,7 +406,7 @@ def results_to_signal_table(
     for group_key, group in results_df.groupby(valid_group_cols, dropna=False, sort=True):
         if not isinstance(group_key, tuple):
             group_key = (group_key,)
-        label = "-".join(f"{col}{value}" for col, value in zip(valid_group_cols, group_key))
+        label = "-".join(f"{col}{cast(Any, value)}" for col, value in zip(valid_group_cols, group_key))
         if order_col in group.columns:
             group = group.sort_values(order_col)
 
@@ -460,7 +460,6 @@ def formatted_csvs_to_dataframe(
         )
 
         volts, currents = read_swv_csv(str(path))
-        trace_type = "full" if np.nanmin(volts) < 1.0 else "partial"
         for channel, current in enumerate(currents):
             rows.append({
                 "folder": str(folder),
@@ -470,7 +469,6 @@ def formatted_csvs_to_dataframe(
                 "channel": channel,
                 "time": elapsed,
                 "timestamp": timestamp,
-                "trace_type": trace_type,
                 "voltage": volts.tolist(),
                 "current": current.tolist(),
             })
@@ -487,13 +485,14 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
     and net current arrays, preserving file, timestamp, frequency, and channel.
     """
     try:
+        # noinspection PyPackageRequirements
         import pypalmsens as ps
     except ImportError as exc:
         raise ImportError("pssession support requires the optional pypalmsens package") from exc
 
     folder = Path(folder)
     strip_mp3_suffix_from_pssession_files(folder)
-    files = sorted(folder.glob("*.pssession"), key=lambda path: path.stat().st_mtime)
+    files = sorted(folder.glob("*.pssession"), key=lambda f: f.stat().st_mtime)
     if not files:
         raise ValueError(f"No .pssession files found in {folder}")
 
@@ -616,7 +615,7 @@ def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Sort SWV trace rows by time, frequency, trace number, and channel."""
     df = df.copy()
     if "timestamp" in df.columns:
-        parsed = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        parsed = cast(pd.Series, pd.to_datetime(df["timestamp"], errors="coerce", utc=True))
         df["timestamp"] = parsed
         if "time" not in df.columns and parsed.notna().any():
             first = parsed.min()
@@ -639,71 +638,6 @@ def order_results_dataframe(results_df: pd.DataFrame) -> pd.DataFrame:
         if col in results_df.columns
     ]
     return results_df.sort_values(sort_cols).reset_index(drop=True) if sort_cols else results_df
-
-
-def plot_signal_over_time(
-    results_df: pd.DataFrame,
-    *,
-    ax=None,
-    signal_col: str = "peak",
-    time_col: str = "time",
-    group_cols: Sequence[str] = ("hz", "channel"),
-):
-    """Plot fitted peak signal across ordered samples.
-
-    If a relative `time` column is absent, timestamps are converted to a
-    relative numeric axis from the first scan. Lines are split by the requested
-    grouping columns.
-    """
-    import matplotlib.pyplot as plt
-
-    if signal_col not in results_df.columns:
-        raise ValueError(f"results_df must contain {signal_col!r}")
-    data = order_results_dataframe(results_df)
-
-    valid_group_cols = [col for col in group_cols if col in data.columns]
-    if not valid_group_cols:
-        valid_group_cols = ["method"] if "method" in data.columns else []
-
-    x_col = time_col
-    x_label = "Time"
-    if x_col not in data.columns:
-        if "timestamp" in data.columns:
-            x_col = "__relative_time"
-            timestamps = pd.to_datetime(data["timestamp"], errors="coerce", utc=True)
-            data[x_col] = (timestamps - timestamps.min()).dt.total_seconds() / 3600
-        else:
-            x_col = "__sample_index"
-            x_label = "Index Number"
-            if valid_group_cols:
-                data[x_col] = data.groupby(valid_group_cols, dropna=False, sort=False).cumcount()
-            else:
-                data[x_col] = np.arange(len(data))
-    elif time_col != "time":
-        x_label = "Index Number"
-    else:
-        x_label = "Time"
-
-    if ax is None:
-        _, ax = plt.subplots()
-
-    if valid_group_cols:
-        grouped = data.groupby(valid_group_cols, dropna=False, sort=True)
-    else:
-        grouped = [(("signal",), data)]
-
-    for group_key, group in grouped:
-        if not isinstance(group_key, tuple):
-            group_key = (group_key,)
-        label = ", ".join(
-            f"{col}={value}" for col, value in zip(valid_group_cols, group_key)
-        ) if valid_group_cols else "signal"
-        ax.plot(group[x_col], group[signal_col], marker="o", label=label)
-
-    ax.set_xlabel(x_label)
-    ax.set_ylabel("Signal")
-    ax.legend()
-    return ax
 
 
 def _read_pssession_frequency(path: Path) -> float | None:
@@ -783,10 +717,12 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         error = None
 
     params = {}
+    # noinspection PyPackages
     if "peak_window_start" in row and "peak_window_end" in row:
         start = row.get("peak_window_start")
         end = row.get("peak_window_end")
         if pd.notna(start) and pd.notna(end):
+            # noinspection PyTypeChecker
             params["peak_window"] = (int(start), int(end))
 
     return FitResult(
@@ -806,48 +742,3 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
     )
 
 
-def _fit_plot_mask(result: FitResult) -> NDArray[np.bool_]:
-    mask = np.isfinite(result.fitted_current)
-    if result.method != "aswift":
-        return mask
-
-    peak_window = result.params.get("peak_window")
-    if peak_window is None:
-        return np.isfinite(result.peak_profile)
-
-    start, end = peak_window
-    window_mask = np.zeros(result.volts.size, dtype=bool)
-    window_mask[max(int(start), 0):min(int(end), result.volts.size)] = True
-    return window_mask & mask
-
-
-def plot_fit_result(result: FitResult, ax=None):
-    """Plot raw current, background, fitted signal, and peak height."""
-    import matplotlib.pyplot as plt
-
-    if ax is None:
-        _, ax = plt.subplots()
-
-    ax.plot(result.volts, result.current, label="data", color="tab:blue")
-    ax.plot(result.volts, result.background_profile, label="background", color="black")
-    fit_mask = _fit_plot_mask(result)
-    fit_label = "fit (peak region)" if result.method == "aswift" else "fit"
-    ax.plot(result.volts[fit_mask], result.fitted_current[fit_mask], label=fit_label, color="tab:red")
-    if result.success and result.peak_index >= 0:
-        ax.vlines(
-            result.peak_voltage,
-            result.peak_background,
-            result.peak_background + result.peak_signal,
-            color="tab:gray",
-            linestyle="--",
-            label=f"peak = {result.peak_signal:.3g}",
-        )
-    ax.set_xlabel("Input")
-    ax.set_ylabel("Signal")
-    ax.legend()
-    return ax
-
-
-def plot_fit_result_from_row(row: pd.Series | dict[str, Any], ax=None):
-    """Plot one row from a batch results dataframe."""
-    return plot_fit_result(fit_result_from_row(row), ax=ax)
