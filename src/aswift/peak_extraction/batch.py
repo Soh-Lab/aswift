@@ -460,7 +460,6 @@ def formatted_csvs_to_dataframe(
         )
 
         volts, currents = read_swv_csv(str(path))
-        trace_type = "full" if float(np.nanmin(volts)) < 1.0 else "partial"
         for channel, current in enumerate(currents):
             rows.append({
                 "folder": str(folder),
@@ -470,7 +469,6 @@ def formatted_csvs_to_dataframe(
                 "channel": channel,
                 "time": elapsed,
                 "timestamp": timestamp,
-                "trace_type": trace_type,
                 "voltage": volts.tolist(),
                 "current": current.tolist(),
             })
