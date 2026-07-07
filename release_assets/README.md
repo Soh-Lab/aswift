@@ -39,6 +39,8 @@ app in import-check mode before zipping, so a build fails if Streamlit or the
 bundled viewer script cannot be loaded. The PyInstaller spec explicitly bundles
 package metadata for ASWIFT, Streamlit, and pypalmsens because Streamlit queries
 its installed package version at startup.
+When launched from Finder, startup errors are written to
+`~/Library/Logs/ASWIFT Viewer.log`.
 
 ## Local Build
 
@@ -100,3 +102,11 @@ ditto -c -k --keepParent --sequesterRsrc --rsrc \
 
 On macOS, unsigned apps may need right-click > Open the first time. For a public
 release, code-sign and notarize the macOS zips and sign the Windows executable.
+If replacing a test build on macOS, quit old ASWIFT Viewer processes and delete
+the old app before unzipping the new one:
+
+```bash
+pkill -f "ASWIFT Viewer" || true
+rm -f /tmp/aswift-viewer-instance.json
+rm -rf ~/Downloads/"ASWIFT Viewer.app"
+```

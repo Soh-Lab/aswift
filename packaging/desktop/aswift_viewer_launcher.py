@@ -11,6 +11,7 @@ import webbrowser
 import atexit
 import contextlib
 import json
+import traceback
 import multiprocessing as mp
 import tempfile
 from pathlib import Path
@@ -18,6 +19,20 @@ from pathlib import Path
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8501
+
+
+def _log_path() -> Path:
+    return Path.home() / "Library" / "Logs" / "ASWIFT Viewer.log"
+
+
+def _log(message: str) -> None:
+    try:
+        path = _log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(message.rstrip() + "\n")
+    except OSError:
+        return
 
 
 def _bundle_root() -> Path:
@@ -112,6 +127,7 @@ def _configure_streamlit_runtime() -> None:
 
 
 def main() -> None:
+    _log("Starting ASWIFT Viewer")
     mp.freeze_support()
 
     root = _bundle_root()
@@ -160,6 +176,7 @@ def main() -> None:
         import streamlit.config as st_config
 
         st_config.get_config_options()
+        _log(f"ASWIFT Viewer import check passed: {viewer}")
         print(f"ASWIFT Viewer import check passed: {viewer}")
         return
 
@@ -168,4 +185,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        _log(traceback.format_exc())
+        raise
