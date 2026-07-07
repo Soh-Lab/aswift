@@ -66,7 +66,21 @@ jobs:
             --distpath build/desktop-dist \
             packaging/desktop/aswift_viewer.spec
 
-      - name: Zip app
+      - name: Prepare macOS app bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          chmod +x "${{ matrix.package-path }}/Contents/MacOS/ASWIFT Viewer"
+          codesign --force --deep --sign - "${{ matrix.package-path }}"
+
+      - name: Zip macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          ditto -c -k --keepParent --sequesterRsrc --rsrc "${{ matrix.package-path }}" "${{ matrix.asset-name }}.zip"
+
+      - name: Zip Windows app
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Compress-Archive -Path "${{ matrix.package-path }}" -DestinationPath "${{ matrix.asset-name }}.zip"

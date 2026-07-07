@@ -32,7 +32,9 @@ The workflow builds macOS Intel on `macos-15-intel` and macOS Apple Silicon on
 `macos-15`; keep those labels explicit so release builds do not silently move
 when GitHub changes `macos-latest`.
 macOS artifacts contain `ASWIFT Viewer.app`; Windows artifacts contain the
-`ASWIFT Viewer` folder with `ASWIFT Viewer.exe`.
+`ASWIFT Viewer` folder with `ASWIFT Viewer.exe`. The macOS workflow ad-hoc
+signs the `.app` bundle and zips it with `ditto` so executable permissions and
+bundle metadata survive download/unzip.
 
 ## Local Build
 
@@ -64,7 +66,15 @@ $env:DOTNET_RUNTIME_DIR = "C:\path\to\dotnet-runtime"
 ```
 
 The Windows app appears under `build/desktop-dist/ASWIFT Viewer/`. On macOS,
-zip `build/desktop-dist/ASWIFT Viewer.app` for distribution.
+ad-hoc sign and zip `build/desktop-dist/ASWIFT Viewer.app` with `ditto`:
+
+```bash
+chmod +x "build/desktop-dist/ASWIFT Viewer.app/Contents/MacOS/ASWIFT Viewer"
+codesign --force --deep --sign - "build/desktop-dist/ASWIFT Viewer.app"
+ditto -c -k --keepParent --sequesterRsrc --rsrc \
+  "build/desktop-dist/ASWIFT Viewer.app" \
+  ASWIFT-Viewer-macos-arm64.zip
+```
 
 ## Folder Roles
 
