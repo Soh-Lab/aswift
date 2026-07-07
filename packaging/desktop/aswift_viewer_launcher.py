@@ -13,6 +13,9 @@ import traceback
 import multiprocessing as mp
 import subprocess
 import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -57,11 +60,23 @@ def _app_url(port: int) -> str:
     return f"http://{HOST}:{port}"
 
 
+def _health_url(port: int) -> str:
+    return f"{_app_url(port)}/_stcore/health"
+
+
 def _port_is_open(port: int) -> bool:
     try:
         with socket.create_connection((HOST, port), timeout=0.5):
             return True
     except OSError:
+        return False
+
+
+def _streamlit_health_is_ready(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(_health_url(port), timeout=1.0) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError, TimeoutError):
         return False
 
 
@@ -77,18 +92,25 @@ def _open_existing_instance() -> bool:
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
 
-    if not _port_is_open(port):
+    if not _streamlit_health_is_ready(port):
+        _log(f"Discarding stale ASWIFT Viewer instance state for port {port}")
         with contextlib.suppress(OSError):
             state_path.unlink()
         return False
 
+    _log(f"Opening existing ASWIFT Viewer instance on port {port}")
     webbrowser.open(_app_url(port))
     return True
 
 
-def _write_instance_state(port: int, *, cleanup: bool) -> None:
+def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -> None:
     state_path = _instance_state_path()
-    state_path.write_text(json.dumps({"port": port}), encoding="utf-8")
+    state = {
+        "port": port,
+        "pid": pid,
+        "created_at": time.time(),
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
 
     if not cleanup:
         return
@@ -118,7 +140,9 @@ def _loading_page_path(port: int) -> Path:
 
 def _open_loading_page(port: int) -> None:
     target = _app_url(port)
+    health = _health_url(port)
     page = _loading_page_path(port)
+    log_path = _log_path()
     page.write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -149,21 +173,45 @@ def _open_loading_page(port: int) -> None:
       color: #52606d;
       line-height: 1.5;
     }}
+    code {{
+      background: #eceff1;
+      border-radius: 4px;
+      display: block;
+      margin-top: 1rem;
+      overflow-wrap: anywhere;
+      padding: 0.75rem;
+      text-align: left;
+    }}
+    .hidden {{
+      display: none;
+    }}
   </style>
 </head>
 <body>
   <main>
     <h1>Opening ASWIFT Viewer...</h1>
-    <p>The app is starting a local Streamlit server. This can take a little while
+    <p id="status">The app is starting a local Streamlit server. This can take a little while
     the first time after downloading.</p>
+    <p id="debug" class="hidden">ASWIFT Viewer did not finish starting. Quit any old ASWIFT Viewer
+    processes, reopen the app, and send this log file to the developer:</p>
+    <code id="log" class="hidden">{log_path}</code>
   </main>
   <script>
     const target = "{target}";
+    const health = "{health}";
+    const started = Date.now();
+    const timeoutMs = 45000;
     async function check() {{
       try {{
-        await fetch(target, {{ mode: "no-cors", cache: "no-store" }});
+        await fetch(health, {{ mode: "no-cors", cache: "no-store" }});
         window.location.replace(target);
       }} catch (error) {{
+        if (Date.now() - started > timeoutMs) {{
+          document.getElementById("status").textContent =
+            "Startup is taking longer than expected.";
+          document.getElementById("debug").classList.remove("hidden");
+          document.getElementById("log").classList.remove("hidden");
+        }}
         setTimeout(check, 1000);
       }}
     }}
@@ -174,15 +222,17 @@ def _open_loading_page(port: int) -> None:
 """,
         encoding="utf-8",
     )
+    _log(f"Opening loading page {page} for Streamlit port {port}")
     webbrowser.open(page.as_uri())
 
 
-def _spawn_server(port: int) -> None:
+def _spawn_server(port: int) -> subprocess.Popen:
     env = os.environ.copy()
     env[SERVER_ENV] = "1"
     env["ASWIFT_VIEWER_PORT"] = str(port)
+    env["ASWIFT_VIEWER_LOG_PATH"] = str(_log_path())
     log = _log_path().open("a", encoding="utf-8")
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable],
         close_fds=True,
         env=env,
@@ -190,7 +240,8 @@ def _spawn_server(port: int) -> None:
         stdout=log,
         stderr=log,
     )
-    _log(f"Spawned ASWIFT Viewer server on port {port}")
+    _log(f"Spawned ASWIFT Viewer server on port {port} with pid {proc.pid}")
+    return proc
 
 
 def _configure_streamlit_runtime() -> None:
@@ -204,8 +255,23 @@ def main() -> None:
     _log("Starting ASWIFT Viewer")
 
     root = _bundle_root()
+    _log(
+        "Runtime details: "
+        f"frozen={getattr(sys, 'frozen', False)} "
+        f"platform={sys.platform} "
+        f"executable={sys.executable} "
+        f"argv={sys.argv} "
+        f"cwd={Path.cwd()} "
+        f"bundle_root={root}"
+    )
     _configure_bundled_dotnet(root)
     _configure_streamlit_runtime()
+    _log(
+        "Environment details: "
+        f"DOTNET_ROOT={os.environ.get('DOTNET_ROOT', '')} "
+        f"ASWIFT_VIEWER_PORT={os.environ.get('ASWIFT_VIEWER_PORT', '')} "
+        f"{SERVER_ENV}={os.environ.get(SERVER_ENV, '')}"
+    )
     import_check = os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1"
     server_mode = os.environ.get(SERVER_ENV) == "1"
 
@@ -217,9 +283,9 @@ def main() -> None:
         if _open_existing_instance():
             return
         port = _choose_port()
-        _write_instance_state(port, cleanup=False)
         _open_loading_page(port)
-        _spawn_server(port)
+        proc = _spawn_server(port)
+        _write_instance_state(port, cleanup=False, pid=proc.pid)
         return
 
     port = int(os.environ.get("ASWIFT_VIEWER_PORT", DEFAULT_PORT))
@@ -252,6 +318,7 @@ def main() -> None:
         *sys.argv[1:],
     ]
     sys.argv = streamlit_args
+    _log(f"Starting Streamlit with args: {streamlit_args}")
 
     if import_check:
         import streamlit.config as st_config

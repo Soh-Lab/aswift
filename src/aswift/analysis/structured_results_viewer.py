@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 import sys
 import tempfile
 import time
+import traceback
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -62,6 +64,26 @@ DOWNLOAD_DROP_COLUMNS = {
     "normalization_end_index",
     "normalization_reference_peak",
 }
+
+
+def _viewer_log_path() -> Path:
+    env_path = os.environ.get("ASWIFT_VIEWER_LOG_PATH")
+    if env_path:
+        return Path(env_path).expanduser()
+    return Path.home() / "Library" / "Logs" / "ASWIFT Viewer.log"
+
+
+def _log_unhandled_exception(exc: BaseException) -> str:
+    details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    try:
+        path = _viewer_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("Unhandled ASWIFT Viewer error\n")
+            handle.write(details.rstrip() + "\n")
+    except OSError:
+        pass
+    return details
 
 
 def _cache_data_if_streamlit_runtime(**kwargs):
@@ -1029,7 +1051,7 @@ def _order_download_columns(results: pd.DataFrame) -> pd.DataFrame:
     return results.loc[:, columns]
 
 
-def main() -> None:
+def _run_app() -> None:
     """Run the Streamlit ASWIFT results viewer application."""
     st.set_page_config(page_title="SWV Fit Results Viewer", layout="wide")
     _inject_style()
@@ -1204,6 +1226,18 @@ def main() -> None:
         ax.grid(True, alpha=0.25)
     st.pyplot(fig)
     plt.close(fig)
+
+
+def main() -> None:
+    try:
+        _run_app()
+    except Exception as exc:
+        details = _log_unhandled_exception(exc)
+        st.error("ASWIFT Viewer hit an unexpected error.")
+        st.caption(f"Diagnostic log: {_viewer_log_path()}")
+        with st.expander("Show technical details"):
+            st.code(details, language="python")
+        st.stop()
 
 
 if __name__ == "__main__":
