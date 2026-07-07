@@ -53,11 +53,18 @@ def main() -> None:
     try:
         from streamlit.web.cli import main as streamlit_main
     except ImportError as exc:
-        raise SystemExit("ASWIFT Viewer could not load Streamlit from the bundled application.") from exc
+        raise SystemExit(
+            "ASWIFT Viewer could not load Streamlit from the bundled application: "
+            f"{exc}"
+        ) from exc
 
     viewer = root / "streamlit_app" / "structured_results_viewer.py"
     if not viewer.exists():
         raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
+
+    if os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1":
+        print(f"ASWIFT Viewer import check passed: {viewer}")
+        return
 
     threading.Thread(target=_open_browser_when_ready, daemon=True).start()
     sys.argv = [

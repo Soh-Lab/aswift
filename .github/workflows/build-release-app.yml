@@ -66,6 +66,17 @@ jobs:
             --distpath build/desktop-dist \
             packaging/desktop/aswift_viewer.spec
 
+      - name: Smoke test bundled imports
+        shell: bash
+        env:
+          ASWIFT_VIEWER_IMPORT_CHECK: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "build/desktop-dist/ASWIFT Viewer/ASWIFT Viewer.exe"
+          else
+            "build/desktop-dist/ASWIFT Viewer.app/Contents/MacOS/ASWIFT Viewer"
+          fi
+
       - name: Prepare macOS app bundle
         if: runner.os == 'macOS'
         shell: bash

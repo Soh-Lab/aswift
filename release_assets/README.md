@@ -34,7 +34,9 @@ when GitHub changes `macos-latest`.
 macOS artifacts contain `ASWIFT Viewer.app`; Windows artifacts contain the
 `ASWIFT Viewer` folder with `ASWIFT Viewer.exe`. The macOS workflow ad-hoc
 signs the `.app` bundle and zips it with `ditto` so executable permissions and
-bundle metadata survive download/unzip.
+bundle metadata survive download/unzip. The workflow also launches the frozen
+app in import-check mode before zipping, so a build fails if Streamlit or the
+bundled viewer script cannot be loaded.
 
 ## Local Build
 
