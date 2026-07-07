@@ -5,7 +5,15 @@ from datetime import datetime
 
 
 def read_swv_csv(path):
-    """Read one potentiostat CSV into voltage and channel-current arrays."""
+    """Read one potentiostat CSV into voltage and channel-current arrays.
+
+    Args:
+        path: CSV path in the formatted SWV export layout.
+
+    Returns:
+        ``(volts, currents)`` where ``volts`` is one-dimensional and
+        ``currents`` has shape ``(n_channels, n_points)``.
+    """
 
     # Lazy import pandas here instead of in the imports so that core code that doesn't
     # need this function doesn't pick up pandas by default.
@@ -22,6 +30,15 @@ def read_swv_csv(path):
 
 
 def get_date(file):
+    """Read the measurement timestamp from a formatted SWV CSV.
+
+    Args:
+        file: CSV path to inspect.
+
+    Returns:
+        A ``datetime`` when the expected metadata row is present and parseable,
+        otherwise ``None``.
+    """
     target = "Date and time measurement:"
     encodings = ("utf-16", "utf-8-sig")
 

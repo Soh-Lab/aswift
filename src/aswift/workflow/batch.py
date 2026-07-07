@@ -23,7 +23,14 @@ from aswift.workflow.io import get_date, read_swv_csv
 
 @dataclass(frozen=True)
 class SwvTrace:
-    """One voltage/current trace plus metadata preserved from the source."""
+    """One voltage/current trace plus metadata preserved from the source.
+
+    Attributes:
+        volts: One-dimensional voltage/potential array.
+        current: One-dimensional current/signal array.
+        metadata: Source fields to carry into result rows, such as file name,
+            frequency, sample number, channel, or acquisition time.
+    """
 
     volts: NDArray[np.float64]
     current: NDArray[np.float64]
@@ -108,6 +115,18 @@ def dataframe_to_traces(
       voltage/current columns and metadata in the remaining columns.
     - Legacy long format: one row per point, with scalar voltage/current
       columns that are grouped into traces.
+
+    Args:
+        df: Input dataframe.
+        voltage_col: Column containing voltages or voltage arrays.
+        current_col: Column containing currents or current arrays.
+        point_col: Optional point-order column for legacy long-form data.
+        group_cols: Columns that identify one trace in legacy long-form data.
+        volts_array_col: Legacy array-valued voltage column name.
+        signal_array_col: Legacy array-valued current/signal column name.
+
+    Returns:
+        A list of ``SwvTrace`` objects in dataframe order.
     """
     if _has_array_trace_columns(df, voltage_col, current_col):
         traces = []
@@ -171,7 +190,19 @@ def long_form_to_trace_dataframe(
     point_col: str = "point",
     group_cols: Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    """Convert legacy one-row-per-point SWV data into one row per trace."""
+    """Convert legacy one-row-per-point SWV data into one row per trace.
+
+    Args:
+        df: Input dataframe with scalar voltage/current rows.
+        voltage_col: Name of the voltage column.
+        current_col: Name of the current column.
+        point_col: Optional point-order column.
+        group_cols: Columns that identify one trace. If omitted, all metadata
+            columns except voltage/current/point are used.
+
+    Returns:
+        A dataframe with array-valued voltage/current columns.
+    """
     required = {voltage_col, current_col}
     missing = required - set(df.columns)
     if missing:
@@ -217,6 +248,21 @@ def fit_traces(
     The default single-worker path avoids parallel overhead. For larger batches,
     ``parallel_backend="process"`` fits independent traces in separate Python
     processes and batches work with ``chunksize``.
+
+    Args:
+        traces: Sequence of ``SwvTrace`` objects.
+        method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
+        settings: Optional settings object for the selected method.
+        n_workers: Worker count. ``None`` defaults to the single-worker path.
+        parallel_backend: ``"serial"``, ``"thread"``, ``"process"``, or legacy
+            alias ``"pool"``.
+        chunksize: Process-pool task chunk size.
+        progress_callback: Optional callable receiving ``(completed, total)``.
+        raise_errors: If true, propagate fit errors instead of returning failed
+            ``FitResult`` objects.
+
+    Returns:
+        Fitted results in the same order as ``traces``.
     """
     if method not in SUPPORTED_FITTING_METHODS:
         raise ValueError(f"method must be one of {SUPPORTED_FITTING_METHODS}")
@@ -339,7 +385,26 @@ def fit_dataframe(
     group_cols: Sequence[str] | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> pd.DataFrame:
-    """Fit all traces in a dataframe and return JSON/CSV-friendly result rows."""
+    """Fit all traces in a dataframe and return result rows.
+
+    The input may already contain one row per trace with array-valued
+    voltage/current columns, or legacy one-row-per-point data that can be
+    grouped into traces.
+
+    Args:
+        df: Input SWV dataframe.
+        method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
+        settings: Optional settings object for the selected method.
+        n_workers: Worker count. ``None`` defaults to one worker.
+        parallel_backend: ``"serial"``, ``"thread"``, ``"process"``, or
+            ``"pool"``.
+        chunksize: Process-pool task chunk size.
+        group_cols: Columns that identify traces for legacy long-form data.
+        progress_callback: Optional callable receiving ``(completed, total)``.
+
+    Returns:
+        A dataframe with metadata, scalar fit metrics, and array-valued profiles.
+    """
     traces = dataframe_to_traces(df, group_cols=group_cols)
     fit_results = fit_traces(
         traces,
@@ -354,6 +419,16 @@ def fit_dataframe(
 
 
 def fit_results_to_dataframe(results: Sequence[FitResult], traces: Sequence[SwvTrace]) -> pd.DataFrame:
+    """Convert fitted results and trace metadata into a dataframe.
+
+    Args:
+        results: Fit results returned by ``fit_traces``.
+        traces: Source traces whose metadata should be preserved.
+
+    Returns:
+        A JSON/CSV-friendly dataframe with scalar metrics and array-valued
+        voltage, current, peak, background, and fitted-signal profiles.
+    """
     rows = []
     for result, trace in zip(results, traces):
         row = {
@@ -388,7 +463,19 @@ def results_to_signal_table(
     group_cols: Sequence[str] = ("hz", "channel"),
     order_col: str = "num",
 ) -> pd.DataFrame:
-    """Create a compact results CSV with signal and gain columns per group."""
+    """Create a compact signal/gain table from fitted result rows.
+
+    Args:
+        results_df: Result dataframe from ``fit_dataframe`` or compatible data.
+        calibration_lower_idx: First row index included in the reference signal.
+        calibration_upper_idx: Last row index included in the reference signal.
+        group_cols: Columns used to create one signal/gain pair per group.
+        order_col: Column used to order samples within each group.
+
+    Returns:
+        A dataframe containing sample order metadata plus ``signal-*`` and
+        ``gain-*`` columns for each group.
+    """
     if calibration_upper_idx is None:
         calibration_upper_idx = calibration_lower_idx
 
@@ -427,7 +514,18 @@ def formatted_csvs_to_dataframe(
     hz_values: Iterable[int] | None = None,
     use_file0: bool = True,
 ) -> pd.DataFrame:
-    """Load formatted SWV CSV files into one row per voltammogram."""
+    """Load formatted SWV CSV files into one row per voltammogram.
+
+    Args:
+        folder: Folder containing files named like ``150hz.csv`` or
+            ``150hz-1.csv``.
+        hz_values: Optional frequency filter.
+        use_file0: Whether files without an explicit numeric suffix should be
+            treated as sample ``0``.
+
+    Returns:
+        A trace dataframe with one row per channel in each matching CSV file.
+    """
     folder = Path(folder)
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -740,5 +838,4 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         success=bool(row["success"]),
         error=error,
     )
-
 

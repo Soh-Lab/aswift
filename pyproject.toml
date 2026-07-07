@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aswift"
 version = "0.1.0"
-license = "MIT"
+license = {text = "MIT"}
 description = "ASWIFT peak fitting utilities for square-wave voltammetry"
 authors = [
     {name = "Max Yates", email = "mlyates@stanford.edu"}
@@ -28,7 +28,7 @@ aswift-viewer = "aswift.analysis.viewer_cli:main"
 [project.urls]
 Homepage = "https://github.com/Soh-Lab/aswift"
 Repository = "https://github.com/Soh-Lab/aswift"
-Documentation = "https://github.com"
+Documentation = "https://github.com/Soh-Lab/aswift#readme"
 "Soh Lab Website" = "https://sohlab.stanford.edu/"
 
 [project.optional-dependencies]
@@ -57,5 +57,5 @@ include = ["aswift*"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 filterwarnings = [
-    "ignore:.*deprecated.*:pyparsing.exceptions.PyparsingDeprecationWarning",
+    "ignore:.*deprecated.*:DeprecationWarning",
 ]

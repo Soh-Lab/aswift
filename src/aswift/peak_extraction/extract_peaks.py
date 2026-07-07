@@ -51,16 +51,32 @@ def _validate_trace(volts, current) -> tuple[np.ndarray, np.ndarray]:
 
 
 def poly_calculator(volts, *coeffs):
+    """Evaluate a polynomial at the supplied voltage values.
+
+    This helper is kept for compatibility with earlier curve-fitting workflows.
+    Coefficients use NumPy's descending-power convention, matching
+    ``numpy.polyval``.
+    """
     coeffs = np.asarray(coeffs, dtype=float)
     return np.polyval(coeffs, volts)
 
 
 def linear_calculator(volts, coeffs):
+    """Evaluate a first-order line from ``(slope, intercept)`` coefficients."""
     coeffs = np.asarray(coeffs, dtype=float)
     return coeffs[0] * volts + coeffs[1]
 
 
 def calculate_solved_peak(volts, *peak):
+    """Return a solved peak vector with non-positive values masked as ``NaN``.
+
+    Args:
+        volts: Voltage array associated with the solved peak.
+        *peak: Peak profile values.
+
+    Raises:
+        TypeError: If ``volts`` is a scalar instead of an array.
+    """
     if isinstance(volts, float):
         raise TypeError("calculate_solved_peak requires an array of voltages.")
 
@@ -70,6 +86,15 @@ def calculate_solved_peak(volts, *peak):
 
 
 def calculate_solved_background(volts, background):
+    """Return a solved background vector as a float array.
+
+    Args:
+        volts: Voltage array associated with the solved background.
+        background: Background profile values.
+
+    Raises:
+        TypeError: If ``volts`` is a scalar instead of an array.
+    """
     if isinstance(volts, float):
         raise TypeError("calculate_solved_background requires an array of voltages.")
 
@@ -77,7 +102,11 @@ def calculate_solved_background(volts, background):
 
 
 def full_width_prominence(volts, signal, peak_idx: int) -> float:
-    """Return full-prominence width in x-axis units using nearest width indices."""
+    """Return full-prominence width in x-axis units.
+
+    Non-finite values are ignored by compacting to the finite part of the
+    signal before calling SciPy's peak-width routine.
+    """
     volts = np.asarray(volts, dtype=float)
     signal = np.asarray(signal, dtype=float)
     peak_idx = int(peak_idx)
@@ -155,6 +184,7 @@ def make_smoother_D2(size: int):
 
 
 def mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> float:
+    """Estimate robust residual scale from the median absolute deviation."""
     residuals = np.asarray(residuals, dtype=float)
     med = np.median(residuals)
     mad = np.median(np.abs(residuals - med))
@@ -162,6 +192,7 @@ def mad_scale(residuals: np.ndarray, eps: float = 1e-12) -> float:
 
 
 def rolling_mad_scale(residuals: np.ndarray, window: int, eps: float = 1e-12) -> np.ndarray:
+    """Estimate local robust residual scale with a rolling MAD window."""
     window = max(int(window), 5)
     if window % 2 == 0:
         window += 1
@@ -227,6 +258,22 @@ def huber_smoother_D2(
     tol: float = 1e-6,
     min_w: float = 1e-8,
 ):
+    """Smooth a signal with iteratively reweighted second-derivative Tikhonov.
+
+    Args:
+        y: One-dimensional signal to smooth.
+        lam: Tikhonov regularization parameter.
+        settings: ASWIFT settings that control local scale and Huber weights.
+        base_w: Optional starting weights, usually used to restrict a peak
+            window or preserve previously computed outlier weights.
+        max_iter: Maximum IRLS iterations.
+        tol: Relative profile-change tolerance for convergence.
+        min_w: Minimum weight applied to keep the banded system well-posed.
+
+    Returns:
+        A tuple ``(smooth, weights)`` with the final smoothed signal and IRLS
+        weights.
+    """
     y = np.asarray(y, dtype=float)
     size = y.size
     smoother = make_smoother_D2(size)
@@ -271,6 +318,17 @@ def choose_lambda_lcurve(
     The L-curve compares fidelity to the observed trace against roughness of
     the smoothed trace. ASWIFT uses the maximum-curvature point as a data-driven
     tradeoff between following noise and oversmoothing the peak.
+
+    Args:
+        values: One-dimensional signal to smooth.
+        lam_bounds: Inclusive lower and upper search bounds for lambda.
+        n_grid: Number of logarithmically spaced candidate lambdas.
+        weights: Optional non-negative fidelity weights.
+        eps: Small positive value used to avoid logarithms/division by zero.
+
+    Returns:
+        ``(best_lam, best_smooth, params)`` where ``params`` contains diagnostic
+        arrays for the L-curve search.
     """
     values = np.asarray(values, dtype=float)
     if weights is not None:
@@ -385,6 +443,10 @@ def get_background_range(current, settings: AswiftSettings, rel_height=1.0):
     ASWIFT assumes one primary redox peak and uses the largest-prominence peak
     to define the region excluded from baseline fitting and included in local
     peak smoothing.
+
+    Returns:
+        ``(lower, upper, peak_idx)`` integer indices. The upper index is intended
+        for slicing and may be exclusive in callers that build masks.
     """
     boundary = settings.baseline_boundary
     peaks, props = find_peaks(current, prominence=(None, None))
@@ -420,6 +482,9 @@ def choose_lambda_area(
     backgrounds are scored by the area they place inside that window. The
     selected background is the lowest plausible curve that still has support on
     both sides of the peak.
+
+    Returns:
+        ``(best_lam, best_background)`` for the derpsalsa background fit.
     """
     lower, upper, peak_idx = get_background_range(current, settings, rel_height=1.0)
     peak_indices = np.zeros_like(current, dtype=bool)
@@ -456,7 +521,12 @@ def choose_lambda_area(
 
 
 def fit_derpsalsa_background_iterative(current, volts, settings: AswiftSettings):
-    """ASWIFT background fit: smooth the trace, then fit derpsalsa baseline."""
+    """Fit the ASWIFT background by smoothing, then applying derpsalsa.
+
+    Returns:
+        ``(background, peak_indices, smooth_current)`` where ``peak_indices`` is
+        a boolean mask for the detected peak region.
+    """
     lam_smoother, smooth, _ = choose_lambda_lcurve(current)
     if settings.huber_reweight:
         lam_smoother, smooth, _ = huber_reweighted_lcurve(current, smooth, settings)
@@ -470,7 +540,20 @@ def fit_derpsalsa_background_iterative(current, volts, settings: AswiftSettings)
 
 
 def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, smooth_current=None):
-    """ASWIFT peak fit inside the detected background-excluded peak window."""
+    """Fit the ASWIFT peak inside the background-excluded peak window.
+
+    Args:
+        current: Raw current/signal array.
+        background: Full-length fitted background.
+        indices: Boolean mask selecting the peak window.
+        settings: ASWIFT numerical settings.
+        smooth_current: Optional precomputed smooth trace for residual/noise
+            estimation.
+
+    Returns:
+        ``(peak_profile, peak_signal, bg_idx)``. ``peak_profile`` is full-length
+        and contains ``NaN`` outside the fitted peak window.
+    """
     peak_region = current[indices] - background[indices]
     peak_lambda_scale = settings.peak_lambda_scale
 
@@ -508,9 +591,18 @@ def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, sm
 def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitResult:
     """Fit one SWV trace with ASWIFT.
 
-    Parameters are one-dimensional voltage and current arrays. The result
-    contains the peak signal, the background at the peak, and full-length
-    background/peak profiles suitable for plotting.
+    Args:
+        volts: One-dimensional voltage/potential values.
+        current: One-dimensional current/signal values with the same length as
+            ``volts``.
+        settings: Optional ``AswiftSettings`` override.
+
+    Returns:
+        A ``FitResult`` containing the peak signal, the background at the peak,
+        and full-length background/peak profiles suitable for plotting.
+
+    Raises:
+        ValueError: If the trace is malformed or no valid peak can be fitted.
     """
     volts, current = _validate_trace(volts, current)
     settings = settings or AswiftSettings()
@@ -548,7 +640,18 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
 
 
 def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) -> FitResult:
-    """Fit the legacy polynomial signal with a linear local baseline."""
+    """Fit the legacy polynomial signal with a linear local baseline.
+
+    Args:
+        volts: One-dimensional voltage/potential values.
+        current: One-dimensional current/signal values with the same length as
+            ``volts``.
+        settings: Optional ``PolyLinearSettings`` override.
+
+    Returns:
+        A ``FitResult`` containing the polynomial peak profile and local linear
+        background profile.
+    """
     volts, current = _validate_trace(volts, current)
     settings = settings or PolyLinearSettings()
     if settings.savgol_window % 2 == 0:
@@ -607,7 +710,18 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
 
 
 def fit_signal(volts, current, method: str, settings=None) -> FitResult:
-    """Dispatch to one of the two supported fitting methods."""
+    """Dispatch to one of the supported fitting methods.
+
+    Args:
+        volts: One-dimensional voltage/potential values.
+        current: One-dimensional current/signal values.
+        method: Fitting method name. Supported values are ``"aswift"`` and
+            ``"poly_linear"``.
+        settings: Optional settings object for the selected method.
+
+    Returns:
+        A ``FitResult`` from the selected fitting function.
+    """
     fitting_methods = {
         "aswift": aswift_fit,
         "poly_linear": poly_linear_fit,

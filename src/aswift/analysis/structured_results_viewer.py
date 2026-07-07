@@ -1030,6 +1030,7 @@ def _order_download_columns(results: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
+    """Run the Streamlit ASWIFT results viewer application."""
     st.set_page_config(page_title="SWV Fit Results Viewer", layout="wide")
     _inject_style()
     st.title("SWV Fit Results Viewer")

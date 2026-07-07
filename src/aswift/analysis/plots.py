@@ -25,6 +25,16 @@ def plot_signal_over_time(
     If a relative `time` column is absent, timestamps are converted to a
     relative numeric axis from the first scan. Lines are split by the requested
     grouping columns.
+
+    Args:
+        results_df: Fitted results dataframe.
+        ax: Optional Matplotlib axes to draw on.
+        signal_col: Column to plot on the y-axis.
+        time_col: Preferred x-axis column.
+        group_cols: Columns used to split plotted lines.
+
+    Returns:
+        The Matplotlib axes containing the plot.
     """
     import matplotlib.pyplot as plt
 
@@ -93,7 +103,16 @@ def _fit_plot_mask(result: FitResult) -> NDArray[np.bool_]:
 
 
 def plot_fit_result(result: FitResult, ax=None):
-    """Plot raw current, background, fitted signal, and peak height."""
+    """Plot raw current, background, fitted signal, and peak height.
+
+    Args:
+        result: Fit result returned by ``aswift_fit``, ``poly_linear_fit``, or
+            ``fit_result_from_row``.
+        ax: Optional Matplotlib axes to draw on.
+
+    Returns:
+        The Matplotlib axes containing the plot.
+    """
     import matplotlib.pyplot as plt
 
     if ax is None:
@@ -120,5 +139,13 @@ def plot_fit_result(result: FitResult, ax=None):
 
 
 def plot_fit_result_from_row(row: pd.Series | dict[str, Any], ax=None):
-    """Plot one row from a batch results dataframe."""
+    """Plot one row from a batch results dataframe.
+
+    Args:
+        row: Row from a ``fit_dataframe``/results dataframe.
+        ax: Optional Matplotlib axes to draw on.
+
+    Returns:
+        The Matplotlib axes containing the plot.
+    """
     return plot_fit_result(fit_result_from_row(row), ax=ax)
