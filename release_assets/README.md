@@ -41,6 +41,10 @@ package metadata for ASWIFT, Streamlit, and pypalmsens because Streamlit queries
 its installed package version at startup.
 When launched from Finder, startup errors are written to
 `~/Library/Logs/ASWIFT Viewer.log`.
+The macOS launcher opens a temporary loading page immediately, starts the
+Streamlit server in the background, then exits. Reopening the app later reads
+the saved local port and opens the already-running viewer instead of starting a
+duplicate server.
 
 ## Local Build
 

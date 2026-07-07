@@ -5,20 +5,20 @@ from __future__ import annotations
 import os
 import socket
 import sys
-import threading
-import time
 import webbrowser
 import atexit
 import contextlib
 import json
 import traceback
 import multiprocessing as mp
+import subprocess
 import tempfile
 from pathlib import Path
 
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8501
+SERVER_ENV = "ASWIFT_VIEWER_SERVER"
 
 
 def _log_path() -> Path:
@@ -86,9 +86,12 @@ def _open_existing_instance() -> bool:
     return True
 
 
-def _write_instance_state(port: int) -> None:
+def _write_instance_state(port: int, *, cleanup: bool) -> None:
     state_path = _instance_state_path()
     state_path.write_text(json.dumps({"port": port}), encoding="utf-8")
+
+    if not cleanup:
+        return
 
     def _cleanup() -> None:
         try:
@@ -109,15 +112,85 @@ def _choose_port() -> int:
     raise SystemExit("ASWIFT Viewer could not find a free local port to start Streamlit.")
 
 
-def _open_browser_when_ready(port: int) -> None:
-    """Open the Streamlit URL once the local server accepts connections."""
-    deadline = time.monotonic() + 90
-    while time.monotonic() < deadline:
-        if _port_is_open(port):
-            webbrowser.open(_app_url(port))
-            return
-        else:
-            time.sleep(0.5)
+def _loading_page_path(port: int) -> Path:
+    return Path(tempfile.gettempdir()) / f"aswift-viewer-loading-{port}.html"
+
+
+def _open_loading_page(port: int) -> None:
+    target = _app_url(port)
+    page = _loading_page_path(port)
+    page.write_text(
+        f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Opening ASWIFT Viewer</title>
+  <style>
+    body {{
+      align-items: center;
+      background: #f7f7f4;
+      color: #1f2933;
+      display: flex;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      height: 100vh;
+      justify-content: center;
+      margin: 0;
+    }}
+    main {{
+      max-width: 34rem;
+      padding: 2rem;
+      text-align: center;
+    }}
+    h1 {{
+      font-size: 1.6rem;
+      margin-bottom: 0.5rem;
+    }}
+    p {{
+      color: #52606d;
+      line-height: 1.5;
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Opening ASWIFT Viewer...</h1>
+    <p>The app is starting a local Streamlit server. This can take a little while
+    the first time after downloading.</p>
+  </main>
+  <script>
+    const target = "{target}";
+    async function check() {{
+      try {{
+        await fetch(target, {{ mode: "no-cors", cache: "no-store" }});
+        window.location.replace(target);
+      }} catch (error) {{
+        setTimeout(check, 1000);
+      }}
+    }}
+    check();
+  </script>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    webbrowser.open(page.as_uri())
+
+
+def _spawn_server(port: int) -> None:
+    env = os.environ.copy()
+    env[SERVER_ENV] = "1"
+    env["ASWIFT_VIEWER_PORT"] = str(port)
+    log = _log_path().open("a", encoding="utf-8")
+    subprocess.Popen(
+        [sys.executable],
+        close_fds=True,
+        env=env,
+        start_new_session=True,
+        stdout=log,
+        stderr=log,
+    )
+    _log(f"Spawned ASWIFT Viewer server on port {port}")
 
 
 def _configure_streamlit_runtime() -> None:
@@ -127,12 +200,32 @@ def _configure_streamlit_runtime() -> None:
 
 
 def main() -> None:
-    _log("Starting ASWIFT Viewer")
     mp.freeze_support()
+    _log("Starting ASWIFT Viewer")
 
     root = _bundle_root()
     _configure_bundled_dotnet(root)
     _configure_streamlit_runtime()
+    import_check = os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1"
+    server_mode = os.environ.get(SERVER_ENV) == "1"
+
+    viewer = root / "streamlit_app" / "structured_results_viewer.py"
+    if not viewer.exists():
+        raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
+
+    if not import_check and not server_mode:
+        if _open_existing_instance():
+            return
+        port = _choose_port()
+        _write_instance_state(port, cleanup=False)
+        _open_loading_page(port)
+        _spawn_server(port)
+        return
+
+    port = int(os.environ.get("ASWIFT_VIEWER_PORT", DEFAULT_PORT))
+
+    if not import_check:
+        _write_instance_state(port, cleanup=True)
 
     try:
         from streamlit.web.cli import main as streamlit_main
@@ -141,18 +234,6 @@ def main() -> None:
             "ASWIFT Viewer could not load Streamlit from the bundled application: "
             f"{exc}"
         ) from exc
-
-    viewer = root / "streamlit_app" / "structured_results_viewer.py"
-    if not viewer.exists():
-        raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
-
-    import_check = os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1"
-    if not import_check and _open_existing_instance():
-        return
-
-    port = DEFAULT_PORT if import_check else _choose_port()
-    if not import_check:
-        _write_instance_state(port)
 
     streamlit_args = [
         "streamlit",
@@ -180,7 +261,6 @@ def main() -> None:
         print(f"ASWIFT Viewer import check passed: {viewer}")
         return
 
-    threading.Thread(target=_open_browser_when_ready, args=(port,), daemon=True).start()
     streamlit_main()
 
 
