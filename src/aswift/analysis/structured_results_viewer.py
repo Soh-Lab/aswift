@@ -18,16 +18,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from aswift.workflow.batch import (
-    fit_dataframe,
-    order_results_dataframe,
-    pssession_folder_to_dataframe,
-    results_to_signal_table,
-    strip_mp3_suffix_from_pssession_files,
-)
-
-from aswift.analysis.plots import plot_fit_result_from_row, plot_signal_over_time
-
 ARRAY_COLUMNS = {
     "voltage",
     "current",
@@ -65,6 +55,14 @@ DOWNLOAD_DROP_COLUMNS = {
     "normalization_reference_peak",
 }
 
+fit_dataframe = None
+order_results_dataframe = None
+pssession_folder_to_dataframe = None
+results_to_signal_table = None
+strip_mp3_suffix_from_pssession_files = None
+plot_fit_result_from_row = None
+plot_signal_over_time = None
+
 
 def _viewer_log_path() -> Path:
     env_path = os.environ.get("ASWIFT_VIEWER_LOG_PATH")
@@ -84,6 +82,56 @@ def _log_unhandled_exception(exc: BaseException) -> str:
     except OSError:
         pass
     return details
+
+
+def _log_viewer_message(message: str) -> None:
+    try:
+        path = _viewer_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(message.rstrip() + "\n")
+    except OSError:
+        pass
+
+
+def _ensure_aswift_runtime_loaded() -> None:
+    missing_workflow_names = [
+        "fit_dataframe",
+        "order_results_dataframe",
+        "pssession_folder_to_dataframe",
+        "results_to_signal_table",
+        "strip_mp3_suffix_from_pssession_files",
+    ]
+    if any(globals().get(name) is None for name in missing_workflow_names):
+        from aswift.workflow.batch import (
+            fit_dataframe as _fit_dataframe,
+            order_results_dataframe as _order_results_dataframe,
+            pssession_folder_to_dataframe as _pssession_folder_to_dataframe,
+            results_to_signal_table as _results_to_signal_table,
+            strip_mp3_suffix_from_pssession_files as _strip_mp3_suffix_from_pssession_files,
+        )
+
+        if globals().get("fit_dataframe") is None:
+            globals()["fit_dataframe"] = _fit_dataframe
+        if globals().get("order_results_dataframe") is None:
+            globals()["order_results_dataframe"] = _order_results_dataframe
+        if globals().get("pssession_folder_to_dataframe") is None:
+            globals()["pssession_folder_to_dataframe"] = _pssession_folder_to_dataframe
+        if globals().get("results_to_signal_table") is None:
+            globals()["results_to_signal_table"] = _results_to_signal_table
+        if globals().get("strip_mp3_suffix_from_pssession_files") is None:
+            globals()["strip_mp3_suffix_from_pssession_files"] = _strip_mp3_suffix_from_pssession_files
+
+    if globals().get("plot_fit_result_from_row") is None or globals().get("plot_signal_over_time") is None:
+        from aswift.analysis.plots import (
+            plot_fit_result_from_row as _plot_fit_result_from_row,
+            plot_signal_over_time as _plot_signal_over_time,
+        )
+
+        if globals().get("plot_fit_result_from_row") is None:
+            globals()["plot_fit_result_from_row"] = _plot_fit_result_from_row
+        if globals().get("plot_signal_over_time") is None:
+            globals()["plot_signal_over_time"] = _plot_signal_over_time
 
 
 def _cache_data_if_streamlit_runtime(**kwargs):
@@ -114,6 +162,7 @@ def _parse_array_value(value: Any) -> Any:
 
 
 def _prepare_results(df: pd.DataFrame, *, source_kind: str = "results") -> pd.DataFrame:
+    _ensure_aswift_runtime_loaded()
     missing = REQUIRED_FIT_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(f"Results file is missing required columns: {sorted(missing)}")
@@ -330,6 +379,7 @@ def _fit_trace_dataframe(
     _progress: _StreamlitProgress | None = None,
     group_cols: list[str] | None = None,
 ) -> pd.DataFrame:
+    _ensure_aswift_runtime_loaded()
     if _progress is not None:
         _progress.update(0, len(trace_df), "Fitting rows", force=True)
 
@@ -583,6 +633,7 @@ def _live_folder_signature_key(folder: Path, method: str) -> str:
 
 
 def _current_pssession_files(folder: Path) -> list[Path]:
+    _ensure_aswift_runtime_loaded()
     strip_mp3_suffix_from_pssession_files(folder)
     return sorted(folder.glob("*.pssession"), key=lambda path: path.stat().st_mtime)
 
@@ -606,6 +657,7 @@ def _watch_live_pssession_folder(folder_text: str, method: str) -> None:
 
 
 def _pssession_file_to_dataframe(path: Path) -> pd.DataFrame:
+    _ensure_aswift_runtime_loaded()
     with tempfile.TemporaryDirectory(prefix="aswift-pssession-one-") as tmp:
         temp_path = Path(tmp) / path.name
         temp_path.write_bytes(path.read_bytes())
@@ -642,6 +694,7 @@ def _load_results_from_live_pssession_folder(
     n_workers: int | None,
     _progress: _StreamlitProgress | None = None,
 ) -> pd.DataFrame:
+    _ensure_aswift_runtime_loaded()
     folder = Path(folder_text).expanduser()
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -1056,6 +1109,12 @@ def _run_app() -> None:
     st.set_page_config(page_title="SWV Fit Results Viewer", layout="wide")
     _inject_style()
     st.title("SWV Fit Results Viewer")
+    startup_notice = st.empty()
+    startup_notice.info("Loading ASWIFT analysis libraries...")
+    load_started = time.monotonic()
+    _ensure_aswift_runtime_loaded()
+    _log_viewer_message(f"Loaded ASWIFT analysis libraries in {time.monotonic() - load_started:.2f}s")
+    startup_notice.empty()
 
     st.sidebar.header("Input")
     startup_path = _startup_results_path()

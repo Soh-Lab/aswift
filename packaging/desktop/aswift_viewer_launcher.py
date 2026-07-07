@@ -16,6 +16,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import signal
 from pathlib import Path
 
 
@@ -82,6 +83,57 @@ def _streamlit_health_is_ready(port: int) -> bool:
 
 def _instance_state_path() -> Path:
     return Path(tempfile.gettempdir()) / "aswift-viewer-instance.json"
+
+
+def _process_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _stop_existing_instance() -> None:
+    state_path = _instance_state_path()
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        port = int(state.get("port", DEFAULT_PORT))
+        pid = int(state["pid"])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return
+
+    if not _process_is_running(pid):
+        _log(f"Discarding ASWIFT Viewer state for stopped pid {pid}")
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return
+    if not _port_is_open(port):
+        _log(f"Discarding ASWIFT Viewer state for pid {pid}; port {port} is closed")
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return
+
+    _log(f"Stopping previous ASWIFT Viewer server pid {pid} on port {port}")
+    with contextlib.suppress(OSError):
+        os.kill(pid, signal.SIGTERM)
+
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if not _process_is_running(pid):
+            break
+        time.sleep(0.1)
+
+    if _process_is_running(pid):
+        _log(f"Force-stopping previous ASWIFT Viewer server pid {pid}")
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
+
+    with contextlib.suppress(OSError):
+        state_path.unlink()
 
 
 def _open_existing_instance() -> bool:
@@ -293,8 +345,7 @@ def main() -> None:
         raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
 
     if not import_check and not server_mode:
-        if _open_existing_instance():
-            return
+        _stop_existing_instance()
         port = _choose_port()
         _open_loading_page(port)
         proc = _spawn_server(port)

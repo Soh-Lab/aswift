@@ -57,10 +57,8 @@ if sys.platform == "darwin":
     exe = EXE(
         pyz,
         a.scripts,
-        a.binaries,
-        a.datas,
         [],
-        exclude_binaries=False,
+        exclude_binaries=True,
         name="ASWIFT Viewer",
         debug=False,
         bootloader_ignore_signals=False,
@@ -73,8 +71,17 @@ if sys.platform == "darwin":
         codesign_identity=None,
         entitlements_file=None,
     )
-    app = BUNDLE(
+    coll = COLLECT(
         exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name="ASWIFT Viewer",
+    )
+    app = BUNDLE(
+        coll,
         name="ASWIFT Viewer.app",
         icon=None,
         bundle_identifier="edu.stanford.sohlab.aswift-viewer",
