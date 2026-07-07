@@ -46,9 +46,16 @@ def _open_browser_when_ready() -> None:
             time.sleep(0.5)
 
 
+def _configure_streamlit_runtime() -> None:
+    """Use production Streamlit settings inside the frozen desktop app."""
+    os.environ.setdefault("STREAMLIT_GLOBAL_DEVELOPMENT_MODE", "false")
+    os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+
+
 def main() -> None:
     root = _bundle_root()
     _configure_bundled_dotnet(root)
+    _configure_streamlit_runtime()
 
     try:
         from streamlit.web.cli import main as streamlit_main
@@ -62,12 +69,7 @@ def main() -> None:
     if not viewer.exists():
         raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
 
-    if os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1":
-        print(f"ASWIFT Viewer import check passed: {viewer}")
-        return
-
-    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
-    sys.argv = [
+    streamlit_args = [
         "streamlit",
         "run",
         str(viewer),
@@ -77,10 +79,22 @@ def main() -> None:
         str(PORT),
         "--server.headless",
         "true",
+        "--global.developmentMode",
+        "false",
         "--browser.gatherUsageStats",
         "false",
         *sys.argv[1:],
     ]
+    sys.argv = streamlit_args
+
+    if os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1":
+        import streamlit.config as st_config
+
+        st_config.get_config_options()
+        print(f"ASWIFT Viewer import check passed: {viewer}")
+        return
+
+    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
     streamlit_main()
 
 
