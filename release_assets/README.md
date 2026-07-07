@@ -36,7 +36,9 @@ macOS artifacts contain `ASWIFT Viewer.app`; Windows artifacts contain the
 signs the `.app` bundle and zips it with `ditto` so executable permissions and
 bundle metadata survive download/unzip. The workflow also launches the frozen
 app in import-check mode before zipping, so a build fails if Streamlit or the
-bundled viewer script cannot be loaded.
+bundled viewer script cannot be loaded. The PyInstaller spec explicitly bundles
+package metadata for ASWIFT, Streamlit, and pypalmsens because Streamlit queries
+its installed package version at startup.
 
 ## Local Build
 

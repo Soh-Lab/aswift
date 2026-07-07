@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 
 project_root = Path(SPECPATH).parents[1]
@@ -23,6 +23,9 @@ datas = [
     (str(viewer), "streamlit_app"),
     *collect_data_files("streamlit"),
     *collect_data_files("pypalmsens"),
+    *copy_metadata("aswift"),
+    *copy_metadata("streamlit"),
+    *copy_metadata("pypalmsens"),
 ]
 
 dotnet_runtime_dir = os.environ.get("DOTNET_RUNTIME_DIR")
