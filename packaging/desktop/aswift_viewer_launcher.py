@@ -92,6 +92,17 @@ def _open_existing_instance() -> bool:
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
 
+    bundle_root = state.get("bundle_root")
+    if bundle_root is None:
+        _log(f"Discarding legacy ASWIFT Viewer instance state for port {port}")
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return False
+    if not Path(bundle_root).exists():
+        _log(f"Discarding ASWIFT Viewer instance with missing bundle root: {bundle_root}")
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return False
     if not _streamlit_health_is_ready(port):
         _log(f"Discarding stale ASWIFT Viewer instance state for port {port}")
         with contextlib.suppress(OSError):
@@ -109,6 +120,7 @@ def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -
         "port": port,
         "pid": pid,
         "created_at": time.time(),
+        "bundle_root": str(_bundle_root()),
     }
     state_path.write_text(json.dumps(state), encoding="utf-8")
 
@@ -231,6 +243,7 @@ def _spawn_server(port: int) -> subprocess.Popen:
     env[SERVER_ENV] = "1"
     env["ASWIFT_VIEWER_PORT"] = str(port)
     env["ASWIFT_VIEWER_LOG_PATH"] = str(_log_path())
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     log = _log_path().open("a", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable],
