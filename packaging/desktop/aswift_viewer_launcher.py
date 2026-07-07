@@ -29,6 +29,10 @@ def _log_path() -> Path:
     return Path.home() / "Library" / "Logs" / "ASWIFT Viewer.log"
 
 
+def _cache_dir() -> Path:
+    return Path.home() / "Library" / "Caches" / "ASWIFT Viewer"
+
+
 def _log(message: str) -> None:
     try:
         path = _log_path()
@@ -313,6 +317,10 @@ def _configure_streamlit_runtime() -> None:
     """Use production Streamlit settings inside the frozen desktop app."""
     os.environ.setdefault("STREAMLIT_GLOBAL_DEVELOPMENT_MODE", "false")
     os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
+    matplotlib_cache = _cache_dir() / "matplotlib"
+    with contextlib.suppress(OSError):
+        matplotlib_cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_cache))
 
 
 def main() -> None:
@@ -398,6 +406,10 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+    except SystemExit as exc:
+        if exc.code not in (0, None):
+            _log(traceback.format_exc())
+        raise
     except BaseException:
         _log(traceback.format_exc())
         raise
