@@ -8,12 +8,16 @@ import sys
 import threading
 import time
 import webbrowser
+import atexit
+import contextlib
+import json
+import multiprocessing as mp
+import tempfile
 from pathlib import Path
 
 
 HOST = "127.0.0.1"
-PORT = 8501
-APP_URL = f"http://{HOST}:{PORT}"
+DEFAULT_PORT = 8501
 
 
 def _bundle_root() -> Path:
@@ -34,15 +38,70 @@ def _configure_bundled_dotnet(root: Path) -> None:
     os.environ["PATH"] = str(dotnet_root) + os.pathsep + os.environ.get("PATH", "")
 
 
-def _open_browser_when_ready() -> None:
+def _app_url(port: int) -> str:
+    return f"http://{HOST}:{port}"
+
+
+def _port_is_open(port: int) -> bool:
+    try:
+        with socket.create_connection((HOST, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _instance_state_path() -> Path:
+    return Path(tempfile.gettempdir()) / "aswift-viewer-instance.json"
+
+
+def _open_existing_instance() -> bool:
+    state_path = _instance_state_path()
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        port = int(state["port"])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+    if not _port_is_open(port):
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+        return False
+
+    webbrowser.open(_app_url(port))
+    return True
+
+
+def _write_instance_state(port: int) -> None:
+    state_path = _instance_state_path()
+    state_path.write_text(json.dumps({"port": port}), encoding="utf-8")
+
+    def _cleanup() -> None:
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if state.get("port") == port:
+            with contextlib.suppress(OSError):
+                state_path.unlink()
+
+    atexit.register(_cleanup)
+
+
+def _choose_port() -> int:
+    for port in range(DEFAULT_PORT, DEFAULT_PORT + 50):
+        if not _port_is_open(port):
+            return port
+    raise SystemExit("ASWIFT Viewer could not find a free local port to start Streamlit.")
+
+
+def _open_browser_when_ready(port: int) -> None:
     """Open the Streamlit URL once the local server accepts connections."""
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((HOST, PORT), timeout=1):
-                webbrowser.open(APP_URL)
-                return
-        except OSError:
+        if _port_is_open(port):
+            webbrowser.open(_app_url(port))
+            return
+        else:
             time.sleep(0.5)
 
 
@@ -53,6 +112,8 @@ def _configure_streamlit_runtime() -> None:
 
 
 def main() -> None:
+    mp.freeze_support()
+
     root = _bundle_root()
     _configure_bundled_dotnet(root)
     _configure_streamlit_runtime()
@@ -69,6 +130,14 @@ def main() -> None:
     if not viewer.exists():
         raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
 
+    import_check = os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1"
+    if not import_check and _open_existing_instance():
+        return
+
+    port = DEFAULT_PORT if import_check else _choose_port()
+    if not import_check:
+        _write_instance_state(port)
+
     streamlit_args = [
         "streamlit",
         "run",
@@ -76,7 +145,7 @@ def main() -> None:
         "--server.address",
         HOST,
         "--server.port",
-        str(PORT),
+        str(port),
         "--server.headless",
         "true",
         "--global.developmentMode",
@@ -87,14 +156,14 @@ def main() -> None:
     ]
     sys.argv = streamlit_args
 
-    if os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1":
+    if import_check:
         import streamlit.config as st_config
 
         st_config.get_config_options()
         print(f"ASWIFT Viewer import check passed: {viewer}")
         return
 
-    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+    threading.Thread(target=_open_browser_when_ready, args=(port,), daemon=True).start()
     streamlit_main()
 
 
