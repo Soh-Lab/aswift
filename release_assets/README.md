@@ -28,6 +28,9 @@ runtime. There are two viable release policies:
 The GitHub Actions workflow in `.github/workflows/build-release-app.yml` uses
 policy 1 by default. Manual workflow runs publish the zips as GitHub Actions
 artifacts; published-release runs also attach the zips to the GitHub Release.
+The workflow builds macOS Intel on `macos-15-intel` and macOS Apple Silicon on
+`macos-15`; keep those labels explicit so release builds do not silently move
+when GitHub changes `macos-latest`.
 
 ## Local Build
 
