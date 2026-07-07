@@ -16,12 +16,15 @@ jobs:
           - os: windows-latest
             asset-name: ASWIFT-Viewer-windows-x64
             dotnet-script: windows
+            package-path: build/desktop-dist/ASWIFT Viewer
           - os: macos-15-intel
             asset-name: ASWIFT-Viewer-macos-x64
             dotnet-script: unix
+            package-path: build/desktop-dist/ASWIFT Viewer.app
           - os: macos-15
             asset-name: ASWIFT-Viewer-macos-arm64
             dotnet-script: unix
+            package-path: build/desktop-dist/ASWIFT Viewer.app
 
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +69,7 @@ jobs:
       - name: Zip app
         shell: pwsh
         run: |
-          Compress-Archive -Path "build/desktop-dist/ASWIFT Viewer" -DestinationPath "${{ matrix.asset-name }}.zip"
+          Compress-Archive -Path "${{ matrix.package-path }}" -DestinationPath "${{ matrix.asset-name }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:

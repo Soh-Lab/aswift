@@ -31,6 +31,8 @@ artifacts; published-release runs also attach the zips to the GitHub Release.
 The workflow builds macOS Intel on `macos-15-intel` and macOS Apple Silicon on
 `macos-15`; keep those labels explicit so release builds do not silently move
 when GitHub changes `macos-latest`.
+macOS artifacts contain `ASWIFT Viewer.app`; Windows artifacts contain the
+`ASWIFT Viewer` folder with `ASWIFT Viewer.exe`.
 
 ## Local Build
 
@@ -61,8 +63,8 @@ $env:DOTNET_RUNTIME_DIR = "C:\path\to\dotnet-runtime"
   packaging\desktop\aswift_viewer.spec
 ```
 
-The app appears under `build/desktop-dist/ASWIFT Viewer/`. Zip that folder for
-distribution.
+The Windows app appears under `build/desktop-dist/ASWIFT Viewer/`. On macOS,
+zip `build/desktop-dist/ASWIFT Viewer.app` for distribution.
 
 ## Folder Roles
 
@@ -77,7 +79,7 @@ distribution.
 
 1. Download the zip for the user's operating system and processor.
 2. Unzip it.
-3. Double-click `ASWIFT Viewer` on macOS or `ASWIFT Viewer.exe` on Windows.
+3. Double-click `ASWIFT Viewer.app` on macOS or `ASWIFT Viewer.exe` on Windows.
 4. The app starts a local Streamlit server and opens the browser.
 5. Use upload mode for CSV/JSON files, or enter a PalmSens folder path for
    `.pssession` files.

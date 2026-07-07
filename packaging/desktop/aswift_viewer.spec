@@ -9,6 +9,7 @@ Microsoft .NET Runtime install.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -75,3 +76,11 @@ coll = COLLECT(
     upx_exclude=[],
     name="ASWIFT Viewer",
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="ASWIFT Viewer.app",
+        icon=None,
+        bundle_identifier="edu.stanford.sohlab.aswift-viewer",
+    )
