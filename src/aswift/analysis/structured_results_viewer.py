@@ -927,6 +927,40 @@ def _inject_style() -> None:
         .section-gap {
             height: 2rem;
         }
+        .js-plotly-plot .modebar-btn {
+            color: #334155 !important;
+            background: rgba(255, 255, 255, 0.9) !important;
+        }
+        .js-plotly-plot .modebar-btn svg path {
+            fill: #334155 !important;
+        }
+        .js-plotly-plot .modebar-btn:hover,
+        .js-plotly-plot .modebar-btn.active {
+            color: #0f172a !important;
+            background: rgba(226, 232, 240, 0.95) !important;
+        }
+        .js-plotly-plot .modebar-btn:hover svg path,
+        .js-plotly-plot .modebar-btn.active svg path {
+            fill: #0f172a !important;
+        }
+        @media (prefers-color-scheme: dark) {
+            .js-plotly-plot .modebar-btn {
+                color: #e5e7eb !important;
+                background: rgba(15, 23, 42, 0.85) !important;
+            }
+            .js-plotly-plot .modebar-btn svg path {
+                fill: #e5e7eb !important;
+            }
+            .js-plotly-plot .modebar-btn:hover,
+            .js-plotly-plot .modebar-btn.active {
+                color: #ffffff !important;
+                background: rgba(51, 65, 85, 0.95) !important;
+            }
+            .js-plotly-plot .modebar-btn:hover svg path,
+            .js-plotly-plot .modebar-btn.active svg path {
+                fill: #ffffff !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,

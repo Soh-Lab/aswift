@@ -106,7 +106,7 @@ else:
         bootloader_ignore_signals=False,
         strip=False,
         upx=True,
-        console=True,
+        console=False,
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,
