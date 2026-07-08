@@ -1014,6 +1014,7 @@ def _add_empty_norm_signal(results: pd.DataFrame) -> pd.DataFrame:
     """Return a results dataframe with an empty normalized-signal column."""
     with_norm = results.copy()
     with_norm["norm_signal"] = np.nan
+    with_norm["normalization_basis"] = False
     return with_norm
 
 
@@ -1022,6 +1023,8 @@ def _ensure_norm_signal(results: pd.DataFrame) -> pd.DataFrame:
     with_norm = results.copy()
     if "norm_signal" not in with_norm.columns:
         with_norm["norm_signal"] = np.nan
+    if "normalization_basis" not in with_norm.columns:
+        with_norm["normalization_basis"] = False
     return with_norm
 
 
@@ -1046,6 +1049,8 @@ def _add_norm_signal_by_peak_range(results: pd.DataFrame, start_idx: int, end_id
             continue
         lo = min(max(int(start_idx), 0), len(ordered) - 1)
         hi = min(max(int(end_idx), lo), len(ordered) - 1)
+        basis_index = ordered.iloc[lo:hi + 1].index
+        normalized.loc[basis_index, "normalization_basis"] = True
         reference = pd.to_numeric(ordered.iloc[lo:hi + 1]["peak"], errors="coerce").mean()
         if not np.isfinite(reference) or reference == 0:
             continue
@@ -1341,13 +1346,14 @@ def _downloadable_results(results: pd.DataFrame) -> pd.DataFrame:
 
 
 def _order_download_columns(results: pd.DataFrame) -> pd.DataFrame:
-    """Place normalized signal next to peak height in downloaded results."""
+    """Place normalized signal and basis flag next to peak height in downloaded results."""
     if "peak" not in results.columns or "norm_signal" not in results.columns:
         return results
 
-    columns = [column for column in results.columns if column != "norm_signal"]
+    adjacent_columns = [column for column in ("norm_signal", "normalization_basis") if column in results.columns]
+    columns = [column for column in results.columns if column not in adjacent_columns]
     peak_idx = columns.index("peak")
-    columns.insert(peak_idx + 1, "norm_signal")
+    columns[peak_idx + 1:peak_idx + 1] = adjacent_columns
     return results.loc[:, columns]
 
 

@@ -288,6 +288,7 @@ def test_viewer_peak_range_normalization_adds_norm_signal_per_group() -> None:
     assert normalized["peak"].tolist() == pytest.approx([2.0, 4.0, 10.0, 20.0])
     assert normalized["background"].tolist() == pytest.approx([1.0, 2.0, 5.0, 10.0])
     assert normalized["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3, 10 / 15, 20 / 15])
+    assert normalized["normalization_basis"].tolist() == [True, True, True, True]
     assert normalized.iloc[0]["current"] == pytest.approx([2.0, 4.0])
     assert normalized.iloc[2]["background_profile"] == pytest.approx([5.0])
 
@@ -324,9 +325,16 @@ def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signa
 
     assert "peak" in download.columns
     assert "norm_signal" in download.columns
+    assert "normalization_basis" in download.columns
     peak_index = download.columns.get_loc("peak")
-    assert download.columns[peak_index : peak_index + 3].tolist() == ["peak", "norm_signal", "background"]
+    assert download.columns[peak_index : peak_index + 4].tolist() == [
+        "peak",
+        "norm_signal",
+        "normalization_basis",
+        "background",
+    ]
     assert download["norm_signal"].isna().all()
+    assert download["normalization_basis"].tolist() == [False, False]
     for column in (
         "peak_index",
         "peak_idx",
@@ -341,8 +349,14 @@ def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signa
     ):
         assert column not in download.columns
     peak_index = normalized_download.columns.get_loc("peak")
-    assert normalized_download.columns[peak_index : peak_index + 3].tolist() == ["peak", "norm_signal", "background"]
+    assert normalized_download.columns[peak_index : peak_index + 4].tolist() == [
+        "peak",
+        "norm_signal",
+        "normalization_basis",
+        "background",
+    ]
     assert normalized_download["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3])
+    assert normalized_download["normalization_basis"].tolist() == [True, True]
 
 
 def test_viewer_download_scope_includes_all_frequencies_for_selected_folder() -> None:
@@ -373,6 +387,7 @@ def test_viewer_download_scope_includes_all_frequencies_for_selected_folder() ->
     assert download["relative_folder"].tolist() == ["plate-a", "plate-a", "plate-a", "plate-a"]
     assert sorted(download["hz"].unique().tolist()) == [150, 250]
     assert download["norm_signal"].tolist() == pytest.approx([1.0, 2.0, 1.0, 2.0])
+    assert download["normalization_basis"].tolist() == [True, False, True, False]
 
 
 def test_result_summary_values_are_display_safe_strings() -> None:
