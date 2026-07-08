@@ -38,6 +38,7 @@ class SwvTrace:
 
 
 def _normalize_workers(n_workers: int | None, n_jobs: int) -> int:
+    """Clamp requested worker count to a valid value for the current job count."""
     if n_jobs <= 1:
         return 1
     if n_workers is None:
@@ -48,6 +49,7 @@ def _normalize_workers(n_workers: int | None, n_jobs: int) -> int:
 
 
 def _normalize_backend(parallel_backend: str) -> str:
+    """Normalize and validate the requested parallel backend name."""
     backend = parallel_backend.lower()
     if backend == "pool":
         backend = "process"
@@ -57,6 +59,7 @@ def _normalize_backend(parallel_backend: str) -> str:
 
 
 def _normalize_chunksize(chunksize: int) -> int:
+    """Validate the process-pool task chunk size."""
     chunksize = int(chunksize)
     if chunksize < 1:
         raise ValueError("chunksize must be >= 1")
@@ -76,6 +79,7 @@ def _parse_array_value(value: Any) -> NDArray[np.float64]:
 
 
 def _is_array_cell(value: Any) -> bool:
+    """Return whether a dataframe cell appears to hold a one-dimensional array."""
     if isinstance(value, str):
         text = value.strip()
         if not (text.startswith("[") and text.endswith("]")):
@@ -89,6 +93,7 @@ def _is_array_cell(value: Any) -> bool:
 
 
 def _has_array_trace_columns(df: pd.DataFrame, voltage_col: str, current_col: str) -> bool:
+    """Detect whether a dataframe already stores one trace per row."""
     if not {voltage_col, current_col}.issubset(df.columns) or df.empty:
         return False
     first = df[[voltage_col, current_col]].dropna().head(1)
@@ -312,6 +317,7 @@ _PROCESS_RAISE_ERRORS = False
 
 
 def _init_fit_process(method: str, settings: AswiftSettings | None, raise_errors: bool) -> None:
+    """Initialize shared fitting settings inside a process-pool worker."""
     global _PROCESS_METHOD, _PROCESS_SETTINGS, _PROCESS_RAISE_ERRORS
     _PROCESS_METHOD = method
     _PROCESS_SETTINGS = settings
@@ -319,6 +325,7 @@ def _init_fit_process(method: str, settings: AswiftSettings | None, raise_errors
 
 
 def _fit_trace_process_task(task: tuple[int, NDArray[np.float64], NDArray[np.float64]]) -> tuple[int, FitResult]:
+    """Fit one serialized trace task inside a process-pool worker."""
     idx, volts, current = task
     if _PROCESS_METHOD is None:
         raise RuntimeError("process worker was not initialized")
@@ -341,6 +348,7 @@ def _fit_traces_process_pool(
     progress_callback: Callable[[int, int], None] | None,
     raise_errors: bool,
 ) -> list[FitResult]:
+    """Fit traces in a multiprocessing pool while preserving result order."""
     tasks = [
         (idx, np.asarray(trace.volts, dtype=float), np.asarray(trace.current, dtype=float))
         for idx, trace in enumerate(traces)
@@ -366,6 +374,7 @@ def _fit_one_trace(
     settings: AswiftSettings | None,
     raise_errors: bool,
 ) -> FitResult:
+    """Fit one trace and convert exceptions into failed results when requested."""
     try:
         return fit_signal(trace.volts, trace.current, method, settings=settings)
     except Exception as exc:
@@ -576,11 +585,13 @@ def formatted_csvs_to_dataframe(
     return pd.DataFrame(rows)
 
 
-def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
+def pssession_folder_to_dataframe(folder: str | Path, *, recursive: bool = False) -> pd.DataFrame:
     """Load PalmSens .pssession files into one row per voltammogram.
 
     This optional adapter requires `pypalmsens`. It extracts potential arrays
     and net current arrays, preserving file, timestamp, frequency, and channel.
+    Set ``recursive=True`` to discover files in nested subfolders while
+    preserving ``relative_folder`` and ``source_path`` metadata.
     """
     try:
         # noinspection PyPackageRequirements
@@ -589,8 +600,9 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
         raise ImportError("pssession support requires the optional pypalmsens package") from exc
 
     folder = Path(folder)
-    strip_mp3_suffix_from_pssession_files(folder)
-    files = sorted(folder.glob("*.pssession"), key=lambda f: f.stat().st_mtime)
+    strip_mp3_suffix_from_pssession_files(folder, recursive=recursive)
+    pattern = "**/*.pssession" if recursive else "*.pssession"
+    files = sorted(folder.glob(pattern), key=lambda f: f.stat().st_mtime)
     if not files:
         raise ValueError(f"No .pssession files found in {folder}")
 
@@ -619,6 +631,7 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
         freq = _read_pssession_frequency(path)
         timestamp = _read_pssession_timestamp(path, fallback=getattr(measurement, "timestamp", None))
         device = str(getattr(measurement, "device", ""))
+        relative_folder = str(path.parent.relative_to(folder)) if path.parent != folder else ""
         for channel, current_idx in enumerate(current_indices):
             prior_volts = [idx for idx in potential_indices if idx < current_idx]
             volt_idx = prior_volts[-1] if prior_volts else potential_indices[0]
@@ -626,7 +639,9 @@ def pssession_folder_to_dataframe(folder: str | Path) -> pd.DataFrame:
             current = np.asarray(arrays[current_idx], dtype=float)
             label = getattr(arrays[current_idx], "name", f"channel_{channel}")
             rows.append({
-                "folder": str(folder),
+                "folder": str(path.parent),
+                "relative_folder": relative_folder,
+                "source_path": str(path),
                 "file": path.name,
                 "hz": freq,
                 "num": num,
@@ -683,17 +698,19 @@ def fit_pssession_folder(
     n_workers: int | None = None,
     parallel_backend: str = "thread",
     chunksize: int = 16,
+    recursive: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read `.pssession` files from a folder and fit each SWV trace.
 
     Returns the trace dataframe and a fitted result dataframe. The
     result rows are ordered by acquisition time, frequency, file number, and
-    channel when those fields are available.
+    channel when those fields are available. Set ``recursive=True`` to include
+    nested subfolders in the PalmSens file discovery step.
     """
-    df = pssession_folder_to_dataframe(folder)
+    df = pssession_folder_to_dataframe(folder, recursive=recursive)
     group_cols = [
-        col for col in ["file", "hz", "num", "channel", "timestamp", "time"]
+        col for col in ["source_path", "file", "hz", "num", "channel", "timestamp", "time"]
         if col in df.columns
     ]
     results = fit_dataframe(
@@ -739,6 +756,7 @@ def order_results_dataframe(results_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _read_pssession_frequency(path: Path) -> float | None:
+    """Read the SWV frequency from raw PalmSens session metadata."""
     try:
         content = path.read_text(encoding="utf-16", errors="ignore")
     except OSError:
@@ -771,6 +789,7 @@ def _datetime_from_dotnet_ticks(ticks: int) -> datetime:
 
 
 def _parse_pssession_timestamp(value) -> datetime | str | None:
+    """Parse PalmSens timestamp values from known text formats."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -838,4 +857,3 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
         success=bool(row["success"]),
         error=error,
     )
-

@@ -1,3 +1,4 @@
+"""Regression tests for ASWIFT fitting, batch processing, and viewer helpers."""
 from __future__ import annotations
 
 import time
@@ -10,6 +11,7 @@ from aswift import aswift_fit, poly_linear_fit
 
 
 def synthetic_single_trace(seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """Return one reproducible synthetic SWV-like trace for tests."""
     rng = np.random.default_rng(seed)
     volts = np.linspace(-0.4, 0.0, 400)
     background = 3.0 * (volts + 0.1) ** 2 + 1.0
@@ -19,6 +21,7 @@ def synthetic_single_trace(seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
 
 
 def synthetic_trace_dataframe():
+    """Return a small synthetic multi-frequency trace dataframe for tests."""
     pd = pytest.importorskip("pandas")
     rng = np.random.default_rng(4)
     volts = np.linspace(-0.4, 0.0, 220)
@@ -46,6 +49,7 @@ def synthetic_trace_dataframe():
 
 
 def test_notebook_01_synthetic_single_trace_fits() -> None:
+    """Verify notebook 01 synthetic single trace fits."""
     volts, current = synthetic_single_trace()
 
     started = time.perf_counter()
@@ -66,6 +70,7 @@ def test_notebook_01_synthetic_single_trace_fits() -> None:
 
 
 def test_notebook_02_synthetic_dataframe_batch_and_signal_table() -> None:
+    """Verify notebook 02 synthetic dataframe batch and signal table."""
     df = synthetic_trace_dataframe()
     from aswift import fit_dataframe, results_to_signal_table
 
@@ -106,6 +111,7 @@ def test_notebook_02_synthetic_dataframe_batch_and_signal_table() -> None:
     ],
 )
 def test_simple_csv_formats_convert_to_trace_dataframe(source: str, expected_channels: int) -> None:
+    """Verify simple csv formats convert to trace dataframe."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import (
@@ -143,18 +149,23 @@ def test_simple_csv_formats_convert_to_trace_dataframe(source: str, expected_cha
 
 
 def test_single_row_sample_selection_does_not_use_slider(monkeypatch) -> None:
+    """Verify single row sample selection does not use slider."""
     pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     import aswift.analysis.structured_results_viewer as viewer
 
     class Sidebar:
+        """Minimal sidebar stub used to assert Streamlit sample-selection behavior."""
         def __init__(self) -> None:
+            """Initialize the helper object."""
             self.slider_called = False
 
         def caption(self, text: str) -> None:
+            """Validate the caption text written by the code under test."""
             assert text == "Sample index: 0"
 
         def slider(self, *_args, **_kwargs) -> int:
+            """Fail if a slider is rendered when only one sample is available."""
             self.slider_called = True
             raise AssertionError("slider should not be used for one row")
 
@@ -166,6 +177,7 @@ def test_single_row_sample_selection_does_not_use_slider(monkeypatch) -> None:
 
 
 def test_signal_table_pads_unequal_group_lengths() -> None:
+    """Verify signal table pads unequal group lengths."""
     pd = pytest.importorskip("pandas")
     from aswift import results_to_signal_table
 
@@ -187,10 +199,12 @@ def test_signal_table_pads_unequal_group_lengths() -> None:
 
 
 def test_fit_dataframe_default_uses_single_worker_fast_path(monkeypatch) -> None:
+    """Verify fit dataframe default uses single worker fast path."""
     df = synthetic_trace_dataframe().head(2)
     import aswift.workflow.batch as batch
 
     def fail_process_pool(*_args, **_kwargs):
+        """Fail if the default fitting path unexpectedly uses process workers."""
         raise AssertionError("default fit_dataframe should not use process workers")
 
     monkeypatch.setattr(batch, "_fit_traces_process_pool", fail_process_pool)
@@ -202,6 +216,7 @@ def test_fit_dataframe_default_uses_single_worker_fast_path(monkeypatch) -> None
 
 
 def test_fit_dataframe_reports_progress_for_single_worker() -> None:
+    """Verify fit dataframe reports progress for single worker."""
     df = synthetic_trace_dataframe().head(3)
     from aswift import fit_dataframe
 
@@ -218,6 +233,7 @@ def test_fit_dataframe_reports_progress_for_single_worker() -> None:
 
 
 def test_plot_helpers_use_expected_axis_labels() -> None:
+    """Verify plot helpers use expected axis labels."""
     pd = pytest.importorskip("pandas")
     plt = pytest.importorskip("matplotlib.pyplot")
     from aswift import aswift_fit, plot_fit_result, plot_signal_over_time
@@ -247,6 +263,7 @@ def test_plot_helpers_use_expected_axis_labels() -> None:
 
 
 def test_viewer_peak_range_normalization_adds_norm_signal_per_group() -> None:
+    """Verify viewer peak range normalization adds norm signal per group."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range
@@ -276,6 +293,7 @@ def test_viewer_peak_range_normalization_adds_norm_signal_per_group() -> None:
 
 
 def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signal() -> None:
+    """Verify viewer results download hides internal columns and preserves norm signal."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range, _downloadable_results
@@ -328,6 +346,7 @@ def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signa
 
 
 def test_result_summary_values_are_display_safe_strings() -> None:
+    """Verify result summary values are display safe strings."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _result_summary
@@ -346,11 +365,12 @@ def test_result_summary_values_are_display_safe_strings() -> None:
     assert summary["value"].tolist() == ["aswift", "True", "1.23457", "0.1"]
 
 
-def test_failed_fit_row_plots_raw_trace() -> None:
+def test_failed_fit_row_builds_interactive_raw_trace() -> None:
+    """Verify failed fit row builds interactive raw trace."""
     pd = pytest.importorskip("pandas")
-    plt = pytest.importorskip("matplotlib.pyplot")
+    pytest.importorskip("plotly")
     pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _raw_trace_plot_from_row
+    from aswift.analysis.structured_results_viewer import _selected_fit_figure
 
     row = pd.Series(
         {
@@ -360,17 +380,61 @@ def test_failed_fit_row_plots_raw_trace() -> None:
         }
     )
 
-    fig, ax = _raw_trace_plot_from_row(row, "No trace")
+    fig = _selected_fit_figure(row, title="Example", empty_message="No trace")
 
-    assert len(ax.lines) == 1
-    assert ax.lines[0].get_xdata().tolist() == pytest.approx([0.0, 1.0, 2.0])
-    assert ax.lines[0].get_ydata().tolist() == pytest.approx([3.0, 4.0, 5.0])
-    assert ax.get_xlabel() == "Potential"
-    assert ax.get_ylabel() == "Current"
-    plt.close(fig)
+    assert len(fig.data) == 1
+    assert list(fig.data[0].x) == pytest.approx([0.0, 1.0, 2.0])
+    assert list(fig.data[0].y) == pytest.approx([3.0, 4.0, 5.0])
+    assert fig.data[0].name == "Raw data"
+    assert fig.layout.xaxis.title.text == "Potential"
+    assert fig.layout.yaxis.title.text == "Current"
+
+
+def test_successful_fit_row_builds_interactive_method_fit() -> None:
+    """Verify successful fit row builds interactive method fit."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("plotly")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import FIT_TRACE_COLORS, _selected_fit_figure
+
+    row = pd.Series(
+        {
+            "success": True,
+            "peak": 1.0,
+            "background": 2.0,
+            "peak_voltage": 1.0,
+            "voltage": [0.0, 1.0, 2.0],
+            "current": [3.0, 4.0, 5.0],
+            "background_profile": [2.0, 2.0, 2.0],
+            "peak_profile": [1.0, 2.0, 3.0],
+            "fitted_signal": [3.0, 4.0, 5.0],
+        }
+    )
+
+    fig = _selected_fit_figure(row, title="Example", empty_message="No trace")
+
+    assert {trace.name for trace in fig.data} >= {
+        "Raw data",
+        "Background",
+        "Method fit",
+        "Peak height",
+    }
+    assert "Peak profile" not in {trace.name for trace in fig.data}
+    background_trace = next(trace for trace in fig.data if trace.name == "Background")
+    assert background_trace.line.color == FIT_TRACE_COLORS["background"]
+    assert background_trace.line.dash is None
+    fit_trace = next(trace for trace in fig.data if trace.name == "Method fit")
+    assert fit_trace.line.color == FIT_TRACE_COLORS["method"]
+    assert fit_trace.line.dash is None
+    peak_trace = next(trace for trace in fig.data if trace.name == "Peak height")
+    assert list(peak_trace.x) == pytest.approx([1.0, 1.0])
+    assert list(peak_trace.y) == pytest.approx([2.0, 3.0])
+    assert peak_trace.line.color == FIT_TRACE_COLORS["peak"]
+    assert peak_trace.line.dash == "dash"
 
 
 def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
+    """Verify upload trace csv uses selected fit method."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     import aswift.analysis.structured_results_viewer as viewer
@@ -385,6 +449,7 @@ def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
     calls = []
 
     def fake_fit_dataframe(_df, **kwargs):
+        """Return deterministic fitted rows while recording call behavior."""
         calls.append(kwargs["method"])
         return pd.DataFrame(
             [
@@ -423,6 +488,7 @@ def test_upload_trace_csv_uses_selected_fit_method(monkeypatch) -> None:
 
 
 def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
+    """Verify upload trace csv impl reports progress."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     import aswift.analysis.structured_results_viewer as viewer
@@ -440,13 +506,17 @@ def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
     updates = []
 
     class Progress:
+        """Progress stub that records updates from viewer fitting helpers."""
         def update(self, completed, total, label=None, *, force=False):
+            """Record or display progress for a fitting operation."""
             updates.append((completed, total, label, force))
 
         def callback(self, label=None):
+            """Return a callback compatible with batch fitting progress hooks."""
             return lambda completed, total: self.update(completed, total, label)
 
     def fake_fit_dataframe(df, **kwargs):
+        """Return deterministic fitted rows while recording call behavior."""
         callback = kwargs.get("progress_callback")
         assert callback is not None
         callback(len(df), len(df))
@@ -490,6 +560,7 @@ def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
 
 
 def test_viewer_uses_process_backend_only_when_workers_exceed_one() -> None:
+    """Verify viewer uses process backend only when workers exceed one."""
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _parallel_backend_for_workers
 
@@ -499,6 +570,7 @@ def test_viewer_uses_process_backend_only_when_workers_exceed_one() -> None:
 
 
 def test_process_backend_matches_single_worker_results() -> None:
+    """Verify process backend matches single worker results."""
     df = synthetic_trace_dataframe().head(4)
     from aswift import fit_dataframe
 
@@ -521,6 +593,7 @@ def test_process_backend_matches_single_worker_results() -> None:
 
 
 def test_missing_frequency_channel_sample_combination_returns_empty_filter() -> None:
+    """Verify missing frequency channel sample combination returns empty filter."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _filter_selected_results
@@ -546,6 +619,7 @@ def test_missing_frequency_channel_sample_combination_returns_empty_filter() -> 
 
 
 def test_sample_options_are_dense_after_frequency_channel_filtering() -> None:
+    """Verify sample options are dense after frequency channel filtering."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _filter_global_selection, _sample_options
@@ -567,6 +641,7 @@ def test_sample_options_are_dense_after_frequency_channel_filtering() -> None:
 
 
 def test_live_pssession_time_normalization_after_cache_changes() -> None:
+    """Verify live pssession time normalization after cache changes."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _normalize_result_time
@@ -584,6 +659,7 @@ def test_live_pssession_time_normalization_after_cache_changes() -> None:
 
 
 def test_live_pssession_new_files_are_fit_in_one_batch(tmp_path, monkeypatch) -> None:
+    """Verify live pssession new files are fit in one batch."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     import aswift.analysis.structured_results_viewer as viewer
@@ -596,6 +672,7 @@ def test_live_pssession_new_files_are_fit_in_one_batch(tmp_path, monkeypatch) ->
     monkeypatch.setattr(viewer.st, "session_state", {})
 
     def fake_file_to_dataframe(f):
+        """Return deterministic trace rows for a fake PalmSens file."""
         return pd.DataFrame(
             [
                 {
@@ -611,6 +688,7 @@ def test_live_pssession_new_files_are_fit_in_one_batch(tmp_path, monkeypatch) ->
     calls = []
 
     def fake_fit_dataframe(df, **kwargs):
+        """Return deterministic fitted rows while recording call behavior."""
         calls.append((len(df), kwargs))
         if kwargs.get("progress_callback") is not None:
             kwargs["progress_callback"](len(df), len(df))
@@ -659,6 +737,7 @@ def test_live_pssession_new_files_are_fit_in_one_batch(tmp_path, monkeypatch) ->
 
 
 def test_startup_json_path_loads_precomputed_results(tmp_path) -> None:
+    """Verify startup json path loads precomputed results."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     from aswift.analysis.structured_results_viewer import _file_signature, _load_results_from_startup_path
@@ -690,3 +769,97 @@ def test_startup_json_path_loads_precomputed_results(tmp_path) -> None:
     assert len(loaded) == 1
     assert loaded.iloc[0]["success"]
     assert loaded.iloc[0]["peak"] == pytest.approx(result.peak_signal)
+
+
+def test_viewer_trend_and_filter_helpers() -> None:
+    """Verify viewer trend and filter helpers."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import (
+        _filter_global_selection,
+        _trend_folder_label,
+        _trend_metric_options,
+    )
+
+    metric_results = pd.DataFrame(
+        {
+            "peak": [1.0],
+            "norm_signal": [1.0],
+            "peak_voltage": [-0.2],
+            "fw_prominence": [0.05],
+        }
+    )
+
+    assert _trend_metric_options(metric_results, normalize=False) == {
+        "Peak height": "peak",
+        "Peak voltage (V)": "peak_voltage",
+        "Peak width (mV)": "fw_prominence",
+    }
+    assert _trend_metric_options(metric_results, normalize=True)["Normalized peak height"] == "norm_signal"
+
+    assert _trend_folder_label(pd.Series({"relative_folder": "plate-a/day-1", "folder": "/tmp/root"})) == "plate-a/day-1"
+    assert _trend_folder_label(pd.Series({"relative_folder": "", "folder": "/tmp/root/day-2"})) == "day-2"
+    assert _trend_folder_label(pd.Series({})) == "All data"
+
+    filter_results = pd.DataFrame(
+        {
+            "relative_folder": ["plate-a", "plate-b", "plate-a"],
+            "folder": ["/tmp/root/plate-a", "/tmp/root/plate-b", "/tmp/root/plate-a"],
+            "channel": [0, 0, 1],
+            "hz": [150, 150, 250],
+            "peak": [1.0, 2.0, 3.0],
+        }
+    )
+
+    filtered = _filter_global_selection(
+        filter_results,
+        selected_folder="plate-a",
+        selected_channel=0,
+        selected_hz=150,
+    )
+
+    assert filtered["peak"].tolist() == [1.0]
+
+
+def test_normalization_scopes_by_subfolder_channel_and_uses_largest_group() -> None:
+    """Verify normalization scopes by subfolder channel and uses largest group."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range, _normalization_row_count
+
+    results = pd.DataFrame(
+        {
+            "relative_folder": ["a", "a", "a", "b", "b"],
+            "channel": [0, 0, 0, 0, 0],
+            "method": ["aswift"] * 5,
+            "num": [0, 1, 2, 0, 1],
+            "peak": [10.0, 20.0, 30.0, 100.0, 200.0],
+        }
+    )
+
+    normalized = _add_norm_signal_by_peak_range(results, 0, 0)
+
+    assert normalized["norm_signal"].tolist() == pytest.approx([1.0, 2.0, 3.0, 1.0, 2.0])
+    assert _normalization_row_count(results) == 3
+
+
+def test_live_pssession_folder_discovers_nested_files(tmp_path, monkeypatch) -> None:
+    """Verify live pssession folder discovers nested files."""
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    nested = tmp_path / "experiment-a" / "day-1"
+    nested.mkdir(parents=True)
+    top_file = tmp_path / "top.pssession"
+    nested_file = nested / "nested.pssession"
+    mp3_file = nested / "renamed.pssession.mp3"
+    top_file.write_text("fake")
+    nested_file.write_text("fake")
+    mp3_file.write_text("fake")
+
+    monkeypatch.setattr(viewer, "strip_mp3_suffix_from_pssession_files", lambda folder, recursive=False: [])
+
+    discovered = viewer._current_pssession_files(tmp_path)
+
+    assert top_file in discovered
+    assert nested_file in discovered

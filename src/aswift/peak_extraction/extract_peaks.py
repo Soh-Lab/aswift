@@ -30,6 +30,7 @@ SUPPORTED_FITTING_METHODS = ("aswift", "poly_linear")
 
 
 def _as_array(name: str, values) -> np.ndarray:
+    """Validate and coerce a trace input into a one-dimensional finite float array."""
     arr = np.asarray(values, dtype=float)
     if arr.ndim != 1:
         raise ValueError(f"{name} must be a one-dimensional array")
@@ -41,6 +42,7 @@ def _as_array(name: str, values) -> np.ndarray:
 
 
 def _validate_trace(volts, current) -> tuple[np.ndarray, np.ndarray]:
+    """Validate voltage and current arrays and ensure they describe the same trace."""
     volts_arr = _as_array("volts", volts)
     current_arr = _as_array("current", current)
     if volts_arr.shape != current_arr.shape:
@@ -159,6 +161,7 @@ def make_smoother_D2(size: int):
     off2 = np.ones(size - 2, dtype=float)
 
     def smoother(y: np.ndarray, lam: float, weights: np.ndarray | None = None):
+        """Solve the weighted Tikhonov smoothing problem for one lambda value."""
         y = np.asarray(y, dtype=float)
         if y.shape[0] != size:
             raise ValueError(f"y must have length {size}")
@@ -492,6 +495,7 @@ def choose_lambda_area(
     baseline_fitter = Baseline(x_data=volts)
 
     def lambda_area(lam):
+        """Score a candidate derpsalsa lambda by background area inside the peak window."""
         background, params = baseline_fitter.derpsalsa(current, lam=lam)
         weights = params["weights"]
         if np.any(weights[:peak_idx] > threshold) and np.any(weights[peak_idx:] > threshold):
@@ -499,6 +503,7 @@ def choose_lambda_area(
         return np.inf
 
     def eval_grid(lam_lo, lam_hi, n):
+        """Evaluate lambda-area scores over a logarithmic candidate grid."""
         lam_lo = max(lam_lo, np.finfo(float).tiny)
         lam_hi = max(lam_hi, lam_lo * 1e3)
         grid_lambdas = np.logspace(np.log10(lam_lo), np.log10(lam_hi), n)

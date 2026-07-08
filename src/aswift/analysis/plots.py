@@ -88,6 +88,7 @@ def plot_signal_over_time(
 
 
 def _fit_plot_mask(result: FitResult) -> NDArray[np.bool_]:
+    """Return the portion of a fitted profile that should be drawn as the method fit."""
     mask = np.isfinite(result.fitted_current)
     if result.method != "aswift":
         return mask
