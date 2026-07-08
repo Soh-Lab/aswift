@@ -42,6 +42,7 @@ SIMPLE_CSV_SOURCE = "simple_csv"
 RESULTS_JSON_NAME = "aswift_fit_results.json"
 PROGRESS_UPDATE_SECONDS = 0.25
 FIT_CHUNKSIZE = 16
+UNKNOWN_CPU_WORKER_LIMIT = 8
 LOGO_NAME = "aswift-logo.png"
 FIT_TRACE_COLORS = {
     "raw": "#0072B2",
@@ -195,6 +196,16 @@ def _prepare_results(df: pd.DataFrame, *, source_kind: str = "results") -> pd.Da
 def _parallel_backend_for_workers(n_workers: int | None) -> str:
     """Choose the viewer fitting backend from the selected worker count."""
     return "process" if n_workers is not None and int(n_workers) > 1 else "thread"
+
+
+def _max_worker_count() -> int:
+    """Return the positive worker count reported for this machine."""
+    return max(1, os.cpu_count() or UNKNOWN_CPU_WORKER_LIMIT)
+
+
+def _default_worker_count() -> int:
+    """Choose a conservative default worker count for the current machine."""
+    return min(8, os.cpu_count() or 1)
 
 
 class _StreamlitProgress:
@@ -1301,6 +1312,26 @@ def _results_csv_bytes(results: pd.DataFrame) -> bytes:
     return _downloadable_results(results).to_csv(index=False).encode("utf-8")
 
 
+def _download_scope_results(
+    results: pd.DataFrame,
+    *,
+    selected_folder: str | None,
+    normalize: bool,
+    norm_start: int,
+    norm_end: int,
+) -> pd.DataFrame:
+    """Prepare downloadable results across all frequencies in the selected folder."""
+    download_scope = _filter_global_selection(
+        results,
+        selected_folder=selected_folder,
+        selected_channel=None,
+        selected_hz=None,
+    )
+    if normalize:
+        return _add_norm_signal_by_peak_range(download_scope, norm_start, norm_end)
+    return _add_empty_norm_signal(download_scope)
+
+
 def _downloadable_results(results: pd.DataFrame) -> pd.DataFrame:
     """Remove internal arrays and normalize columns before result download."""
     download = _ensure_norm_signal(results)
@@ -1579,7 +1610,14 @@ def _run_app() -> None:
             ["Upload JSON/CSV", "PalmSens .pssession"],
         )
     method = input_section.selectbox("Fit method", ["aswift", "poly_linear"])
-    n_workers = input_section.number_input("Workers", min_value=1, value=1, step=1)
+    max_workers = _max_worker_count()
+    n_workers = input_section.number_input(
+        "Workers",
+        min_value=1,
+        max_value=max_workers,
+        value=_default_worker_count(),
+        step=1,
+    )
     upload_order = input_section.selectbox("Upload order", ["Uploaded order", "File name"])
 
     progress: _StreamlitProgress | None = None
@@ -1689,7 +1727,14 @@ def _run_app() -> None:
         if normalize
         else _add_empty_norm_signal(trend_scope)
     )
-    _download_results(display_results)
+    download_results = _download_scope_results(
+        results,
+        selected_folder=selected_folder,
+        normalize=normalize,
+        norm_start=norm_start,
+        norm_end=norm_end,
+    )
+    _download_results(download_results)
 
     filtered = _filter_selected_results(
         display_results,

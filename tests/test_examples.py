@@ -345,6 +345,36 @@ def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signa
     assert normalized_download["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3])
 
 
+def test_viewer_download_scope_includes_all_frequencies_for_selected_folder() -> None:
+    """Verify viewer download includes all frequencies rather than the selected one."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import _download_scope_results
+
+    results = pd.DataFrame(
+        {
+            "relative_folder": ["plate-a", "plate-a", "plate-a", "plate-a", "plate-b"],
+            "method": ["aswift"] * 5,
+            "hz": [150, 150, 250, 250, 150],
+            "channel": [0, 0, 0, 0, 0],
+            "num": [0, 1, 0, 1, 0],
+            "peak": [2.0, 4.0, 10.0, 20.0, 99.0],
+        }
+    )
+
+    download = _download_scope_results(
+        results,
+        selected_folder="plate-a",
+        normalize=True,
+        norm_start=0,
+        norm_end=0,
+    )
+
+    assert download["relative_folder"].tolist() == ["plate-a", "plate-a", "plate-a", "plate-a"]
+    assert sorted(download["hz"].unique().tolist()) == [150, 250]
+    assert download["norm_signal"].tolist() == pytest.approx([1.0, 2.0, 1.0, 2.0])
+
+
 def test_result_summary_values_are_display_safe_strings() -> None:
     """Verify result summary values are display safe strings."""
     pd = pytest.importorskip("pandas")
@@ -567,6 +597,24 @@ def test_viewer_uses_process_backend_only_when_workers_exceed_one() -> None:
     assert _parallel_backend_for_workers(None) == "thread"
     assert _parallel_backend_for_workers(1) == "thread"
     assert _parallel_backend_for_workers(2) == "process"
+
+
+def test_viewer_worker_counts_cap_defaults_and_allow_unknown_cpu_override(monkeypatch) -> None:
+    """Verify viewer worker counts cap defaults and allow unknown CPU overrides."""
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    monkeypatch.setattr(viewer.os, "cpu_count", lambda: 12)
+    assert viewer._max_worker_count() == 12
+    assert viewer._default_worker_count() == 8
+
+    monkeypatch.setattr(viewer.os, "cpu_count", lambda: 4)
+    assert viewer._max_worker_count() == 4
+    assert viewer._default_worker_count() == 4
+
+    monkeypatch.setattr(viewer.os, "cpu_count", lambda: None)
+    assert viewer._max_worker_count() == viewer.UNKNOWN_CPU_WORKER_LIMIT
+    assert viewer._default_worker_count() == 1
 
 
 def test_process_backend_matches_single_worker_results() -> None:
