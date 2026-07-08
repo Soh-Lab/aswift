@@ -40,7 +40,6 @@ REQUIRED_FIT_COLUMNS = {
 TRACE_COLUMNS = {"voltage", "current"}
 SIMPLE_CSV_SOURCE = "simple_csv"
 RESULTS_JSON_NAME = "aswift_fit_results.json"
-SIGNAL_TABLE_NAME = "aswift_signal_table.csv"
 PROGRESS_UPDATE_SECONDS = 0.25
 FIT_CHUNKSIZE = 16
 LOGO_NAME = "aswift-logo.png"
@@ -64,7 +63,6 @@ DOWNLOAD_DROP_COLUMNS = {
 fit_dataframe = None
 order_results_dataframe = None
 pssession_folder_to_dataframe = None
-results_to_signal_table = None
 strip_mp3_suffix_from_pssession_files = None
 
 
@@ -120,7 +118,6 @@ def _ensure_aswift_runtime_loaded() -> None:
         "fit_dataframe",
         "order_results_dataframe",
         "pssession_folder_to_dataframe",
-        "results_to_signal_table",
         "strip_mp3_suffix_from_pssession_files",
     ]
     if any(globals().get(name) is None for name in missing_workflow_names):
@@ -128,7 +125,6 @@ def _ensure_aswift_runtime_loaded() -> None:
             fit_dataframe as _fit_dataframe,
             order_results_dataframe as _order_results_dataframe,
             pssession_folder_to_dataframe as _pssession_folder_to_dataframe,
-            results_to_signal_table as _results_to_signal_table,
             strip_mp3_suffix_from_pssession_files as _strip_mp3_suffix_from_pssession_files,
         )
 
@@ -138,8 +134,6 @@ def _ensure_aswift_runtime_loaded() -> None:
             globals()["order_results_dataframe"] = _order_results_dataframe
         if globals().get("pssession_folder_to_dataframe") is None:
             globals()["pssession_folder_to_dataframe"] = _pssession_folder_to_dataframe
-        if globals().get("results_to_signal_table") is None:
-            globals()["results_to_signal_table"] = _results_to_signal_table
         if globals().get("strip_mp3_suffix_from_pssession_files") is None:
             globals()["strip_mp3_suffix_from_pssession_files"] = _strip_mp3_suffix_from_pssession_files
 
@@ -820,7 +814,6 @@ def _load_results_from_live_pssession_folder(
 
     results = _normalize_result_time(order_results_dataframe(pd.concat(frames, ignore_index=True)))
     results.to_json(folder / RESULTS_JSON_NAME, orient="records", indent=2)
-    results_to_signal_table(results).to_csv(folder / SIGNAL_TABLE_NAME, index=False)
     st.session_state[_live_folder_signature_key(folder, method)] = current_signature
     return _prepare_results(results)
 
