@@ -1595,8 +1595,6 @@ def _run_app() -> None:
     logo_path = _asset_path(LOGO_NAME)
     st.set_page_config(page_title="SWV Fit Results Viewer", page_icon=str(logo_path), layout="wide")
     _inject_style()
-    if logo_path.exists():
-        st.sidebar.image(str(logo_path), use_container_width=True)
     st.title("SWV Fit Results Viewer")
     startup_notice = st.empty()
     startup_notice.info("Loading ASWIFT analysis libraries...")
