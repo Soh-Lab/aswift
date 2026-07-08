@@ -23,6 +23,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8501
 SERVER_ENV = "ASWIFT_VIEWER_SERVER"
+LOGO_NAME = "aswift-logo.png"
 
 
 def _log_path() -> Path:
@@ -62,6 +63,11 @@ def _configure_bundled_dotnet(root: Path) -> None:
     os.environ.setdefault("DOTNET_ROOT", str(dotnet_root))
     os.environ.setdefault("DOTNET_MULTILEVEL_LOOKUP", "0")
     os.environ["PATH"] = str(dotnet_root) + os.pathsep + os.environ.get("PATH", "")
+
+
+def _bundled_asset_path(name: str) -> Path:
+    """Return the path to a PyInstaller-collected desktop asset."""
+    return _bundle_root() / "assets" / name
 
 
 def _app_url(port: int) -> str:
@@ -184,6 +190,13 @@ def _open_existing_instance() -> bool:
 def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -> None:
     """Persist the active viewer process and port for future launches."""
     state_path = _instance_state_path()
+    if pid is None:
+        try:
+            prior_state = json.loads(state_path.read_text(encoding="utf-8"))
+            if prior_state.get("port") == port:
+                pid = prior_state.get("pid")
+        except (OSError, json.JSONDecodeError):
+            pid = None
     state = {
         "port": port,
         "pid": pid,
@@ -206,6 +219,110 @@ def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -
                 state_path.unlink()
 
     atexit.register(_cleanup)
+
+
+def _terminate_process(proc: subprocess.Popen, *, timeout: float = 5.0) -> None:
+    """Terminate a launched subprocess, escalating to kill when needed."""
+    if proc.poll() is not None:
+        return
+
+    _log(f"Stopping ASWIFT Viewer server pid {proc.pid}")
+    with contextlib.suppress(OSError):
+        proc.terminate()
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _log(f"Force-stopping ASWIFT Viewer server pid {proc.pid}")
+        with contextlib.suppress(OSError):
+            proc.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=2.0)
+
+
+def _clear_instance_state(port: int) -> None:
+    """Remove launcher state when it still belongs to the current server port."""
+    state_path = _instance_state_path()
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if state.get("port") == port:
+        with contextlib.suppress(OSError):
+            state_path.unlink()
+
+
+def _run_status_window(port: int, proc: subprocess.Popen) -> None:
+    """Show a small desktop window while the local ASWIFT server is running."""
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+    except Exception as exc:
+        _log(f"Could not load tkinter status window: {exc}")
+        try:
+            while proc.poll() is None:
+                time.sleep(1.0)
+        finally:
+            _terminate_process(proc)
+            _clear_instance_state(port)
+        return
+
+    root = tk.Tk()
+    root.title("ASWIFT Viewer")
+    root.geometry("420x190")
+    root.resizable(False, False)
+
+    icon_path = _bundled_asset_path(LOGO_NAME)
+    if icon_path.exists():
+        with contextlib.suppress(tk.TclError):
+            icon = tk.PhotoImage(file=str(icon_path))
+            root.iconphoto(True, icon)
+
+    frame = ttk.Frame(root, padding=18)
+    frame.pack(fill="both", expand=True)
+
+    title = ttk.Label(frame, text="ASWIFT Viewer is running", font=("", 15, "bold"))
+    title.pack(anchor="w")
+
+    status = ttk.Label(
+        frame,
+        text=(
+            "A local Streamlit server is open in your browser.\n"
+            "Keep this window open while using ASWIFT."
+        ),
+        justify="left",
+    )
+    status.pack(anchor="w", pady=(10, 14))
+
+    button_row = ttk.Frame(frame)
+    button_row.pack(anchor="e", fill="x")
+
+    def open_viewer() -> None:
+        """Open the running viewer in the default browser."""
+        webbrowser.open(_app_url(port))
+
+    def quit_viewer() -> None:
+        """Close the status window and stop the local ASWIFT server."""
+        root.destroy()
+
+    ttk.Button(button_row, text="Open Viewer", command=open_viewer).pack(side="right", padx=(8, 0))
+    ttk.Button(button_row, text="Quit ASWIFT Viewer", command=quit_viewer).pack(side="right")
+
+    def poll_server() -> None:
+        """Close the status window if the Streamlit server exits."""
+        if proc.poll() is not None:
+            _log(f"ASWIFT Viewer server exited with code {proc.returncode}")
+            root.destroy()
+            return
+        root.after(1000, poll_server)
+
+    root.protocol("WM_DELETE_WINDOW", quit_viewer)
+    root.after(1000, poll_server)
+    try:
+        root.mainloop()
+    finally:
+        _terminate_process(proc)
+        _clear_instance_state(port)
 
 
 def _choose_port() -> int:
@@ -376,6 +493,7 @@ def main() -> None:
         _open_loading_page(port)
         proc = _spawn_server(port)
         _write_instance_state(port, cleanup=False, pid=proc.pid)
+        _run_status_window(port, proc)
         return
 
     port = int(os.environ.get("ASWIFT_VIEWER_PORT", DEFAULT_PORT))
