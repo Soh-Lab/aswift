@@ -63,6 +63,7 @@ _PLOTS_EXPORTS = [
 __all__ = _CORE_EXPORTS + _BATCH_EXPORTS + _PLOTS_EXPORTS
 
 def __getattr__(name: str):
+    """Lazily expose optional batch and plotting helpers from the top-level package."""
     if name in _BATCH_EXPORTS:
         from aswift.workflow import batch
 

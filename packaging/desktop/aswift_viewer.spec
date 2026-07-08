@@ -18,13 +18,20 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 project_root = Path(SPECPATH).parents[1]
 launcher = project_root / "packaging" / "desktop" / "aswift_viewer_launcher.py"
 viewer = project_root / "src" / "aswift" / "analysis" / "structured_results_viewer.py"
+assets_dir = project_root / "packaging" / "desktop" / "assets"
+logo_png = assets_dir / "aswift-logo.png"
+mac_icon = assets_dir / "aswift-logo.icns"
+win_icon = assets_dir / "aswift-logo.ico"
 
 datas = [
     (str(viewer), "streamlit_app"),
+    (str(logo_png), "assets"),
     *collect_data_files("streamlit"),
+    *collect_data_files("plotly"),
     *collect_data_files("pypalmsens"),
     *copy_metadata("aswift"),
     *copy_metadata("streamlit"),
+    *copy_metadata("plotly"),
     *copy_metadata("pypalmsens"),
 ]
 
@@ -35,6 +42,7 @@ if dotnet_runtime_dir:
 hiddenimports = [
     *collect_submodules("aswift"),
     *collect_submodules("streamlit"),
+    *collect_submodules("plotly"),
     *collect_submodules("pypalmsens"),
 ]
 
@@ -70,6 +78,7 @@ if sys.platform == "darwin":
         target_arch=None,
         codesign_identity=None,
         entitlements_file=None,
+        icon=str(mac_icon),
     )
     coll = COLLECT(
         exe,
@@ -83,7 +92,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="ASWIFT Viewer.app",
-        icon=None,
+        icon=str(mac_icon),
         bundle_identifier="edu.stanford.sohlab.aswift-viewer",
     )
 else:
@@ -103,6 +112,7 @@ else:
         target_arch=None,
         codesign_identity=None,
         entitlements_file=None,
+        icon=str(win_icon),
     )
     coll = COLLECT(
         exe,

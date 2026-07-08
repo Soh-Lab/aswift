@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aswift"
 version = "0.1.0"
-license = {text = "MIT"}
+license = "MIT"
 description = "ASWIFT peak fitting utilities for square-wave voltammetry"
 authors = [
     {name = "Max Yates", email = "mlyates@stanford.edu"}
@@ -36,6 +36,7 @@ plot = ["matplotlib>=3.10"]
 viewer = [
     "matplotlib>=3.10",
     "pandas>=2.2",
+    "plotly>=5.24",
     "pypalmsens>=1.9.0",
     "streamlit>=1.46",
 ]
@@ -53,6 +54,9 @@ all = [
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["aswift*"]
+
+[tool.setuptools.package-data]
+aswift = ["assets/*.png"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

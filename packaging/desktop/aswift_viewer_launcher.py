@@ -26,14 +26,17 @@ SERVER_ENV = "ASWIFT_VIEWER_SERVER"
 
 
 def _log_path() -> Path:
+    """Return the desktop launcher log path."""
     return Path.home() / "Library" / "Logs" / "ASWIFT Viewer.log"
 
 
 def _cache_dir() -> Path:
+    """Return the desktop launcher cache directory."""
     return Path.home() / "Library" / "Caches" / "ASWIFT Viewer"
 
 
 def _log(message: str) -> None:
+    """Append a timestamped message to the desktop launcher log."""
     try:
         path = _log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,14 +65,17 @@ def _configure_bundled_dotnet(root: Path) -> None:
 
 
 def _app_url(port: int) -> str:
+    """Build the Streamlit app URL for a local port."""
     return f"http://{HOST}:{port}"
 
 
 def _health_url(port: int) -> str:
+    """Build the Streamlit health-check URL for a local port."""
     return f"{_app_url(port)}/_stcore/health"
 
 
 def _port_is_open(port: int) -> bool:
+    """Return whether a TCP port is accepting local connections."""
     try:
         with socket.create_connection((HOST, port), timeout=0.5):
             return True
@@ -78,6 +84,7 @@ def _port_is_open(port: int) -> bool:
 
 
 def _streamlit_health_is_ready(port: int) -> bool:
+    """Return whether Streamlit reports the app as healthy."""
     try:
         with urllib.request.urlopen(_health_url(port), timeout=1.0) as response:
             return response.status == 200
@@ -86,10 +93,12 @@ def _streamlit_health_is_ready(port: int) -> bool:
 
 
 def _instance_state_path() -> Path:
+    """Return the launcher state-file path for an existing app instance."""
     return Path(tempfile.gettempdir()) / "aswift-viewer-instance.json"
 
 
 def _process_is_running(pid: int) -> bool:
+    """Return whether a process id appears to still be alive."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -100,6 +109,7 @@ def _process_is_running(pid: int) -> bool:
 
 
 def _stop_existing_instance() -> None:
+    """Terminate a previously launched viewer process if it is still running."""
     state_path = _instance_state_path()
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -141,6 +151,7 @@ def _stop_existing_instance() -> None:
 
 
 def _open_existing_instance() -> bool:
+    """Open the existing viewer server when a healthy instance is already running."""
     state_path = _instance_state_path()
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -171,6 +182,7 @@ def _open_existing_instance() -> bool:
 
 
 def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -> None:
+    """Persist the active viewer process and port for future launches."""
     state_path = _instance_state_path()
     state = {
         "port": port,
@@ -184,6 +196,7 @@ def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -
         return
 
     def _cleanup() -> None:
+        """Stop the launched Streamlit process and remove launcher state."""
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -196,6 +209,7 @@ def _write_instance_state(port: int, *, cleanup: bool, pid: int | None = None) -
 
 
 def _choose_port() -> int:
+    """Choose an available localhost port for Streamlit."""
     for port in range(DEFAULT_PORT, DEFAULT_PORT + 50):
         if not _port_is_open(port):
             return port
@@ -203,10 +217,12 @@ def _choose_port() -> int:
 
 
 def _loading_page_path(port: int) -> Path:
+    """Return the temporary loading-page path for a viewer port."""
     return Path(tempfile.gettempdir()) / f"aswift-viewer-loading-{port}.html"
 
 
 def _open_loading_page(port: int) -> None:
+    """Open a lightweight loading page while the Streamlit server starts."""
     target = _app_url(port)
     health = _health_url(port)
     page = _loading_page_path(port)
@@ -295,6 +311,7 @@ def _open_loading_page(port: int) -> None:
 
 
 def _spawn_server(port: int) -> subprocess.Popen:
+    """Start the packaged Streamlit server process."""
     env = os.environ.copy()
     env[SERVER_ENV] = "1"
     env["ASWIFT_VIEWER_PORT"] = str(port)
@@ -324,6 +341,7 @@ def _configure_streamlit_runtime() -> None:
 
 
 def main() -> None:
+    """Run the command-line entry point for this module."""
     mp.freeze_support()
     _log("Starting ASWIFT Viewer")
 

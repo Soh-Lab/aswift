@@ -13,8 +13,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: windows-latest
+            asset-name: ASWIFT-Viewer-windows-x64
+            dotnet-script: windows
+            package-path: build/desktop-dist/ASWIFT Viewer
+          - os: macos-15-intel
+            asset-name: ASWIFT-Viewer-macos-x64
+            dotnet-script: unix
+            package-path: build/desktop-dist/ASWIFT Viewer.app
           - os: macos-15
             asset-name: ASWIFT-Viewer-macos-arm64
+            dotnet-script: unix
             package-path: build/desktop-dist/ASWIFT Viewer.app
 
     steps:
@@ -30,12 +39,22 @@ jobs:
           python -m pip install -e ".[viewer]" pyinstaller
 
       - name: Install app-local .NET runtime
+        if: matrix.dotnet-script == 'unix'
         shell: bash
         run: |
           mkdir -p .release-dotnet
           curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
           bash dotnet-install.sh --runtime dotnet --channel 9.0 --install-dir "$PWD/.release-dotnet"
           "$PWD/.release-dotnet/dotnet" --info
+
+      - name: Install app-local .NET runtime
+        if: matrix.dotnet-script == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .release-dotnet | Out-Null
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+          ./dotnet-install.ps1 -Runtime dotnet -Channel 9.0 -InstallDir "$PWD/.release-dotnet"
+          & "$PWD/.release-dotnet/dotnet.exe" --info
 
       - name: Build frozen Streamlit app
         shell: bash
@@ -52,18 +71,30 @@ jobs:
         env:
           ASWIFT_VIEWER_IMPORT_CHECK: "1"
         run: |
-          "build/desktop-dist/ASWIFT Viewer.app/Contents/MacOS/ASWIFT Viewer"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "build/desktop-dist/ASWIFT Viewer/ASWIFT Viewer.exe"
+          else
+            "build/desktop-dist/ASWIFT Viewer.app/Contents/MacOS/ASWIFT Viewer"
+          fi
 
       - name: Prepare macOS app bundle
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           chmod +x "${{ matrix.package-path }}/Contents/MacOS/ASWIFT Viewer"
           codesign --force --deep --sign - "${{ matrix.package-path }}"
 
       - name: Zip macOS app
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           ditto -c -k --keepParent --sequesterRsrc --rsrc "${{ matrix.package-path }}" "${{ matrix.asset-name }}.zip"
+
+      - name: Zip Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ matrix.package-path }}" -DestinationPath "${{ matrix.asset-name }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
