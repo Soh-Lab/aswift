@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 
 
 project_root = Path(SPECPATH).parents[1]
@@ -29,10 +29,14 @@ datas = [
     *collect_data_files("streamlit"),
     *collect_data_files("plotly"),
     *collect_data_files("pypalmsens"),
+    *collect_data_files("pythonnet"),
+    *collect_data_files("clr_loader"),
     *copy_metadata("aswift"),
     *copy_metadata("streamlit"),
     *copy_metadata("plotly"),
     *copy_metadata("pypalmsens"),
+    *copy_metadata("pythonnet"),
+    *copy_metadata("clr_loader"),
 ]
 
 dotnet_runtime_dir = os.environ.get("DOTNET_RUNTIME_DIR")
@@ -44,12 +48,19 @@ hiddenimports = [
     *collect_submodules("streamlit"),
     *collect_submodules("plotly"),
     *collect_submodules("pypalmsens"),
+    *collect_submodules("pythonnet"),
+    *collect_submodules("clr_loader"),
+]
+
+binaries = [
+    *collect_dynamic_libs("pythonnet"),
+    *collect_dynamic_libs("clr_loader"),
 ]
 
 a = Analysis(
     [str(launcher)],
     pathex=[str(project_root / "src")],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

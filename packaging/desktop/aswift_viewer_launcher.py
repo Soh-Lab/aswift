@@ -62,6 +62,7 @@ def _configure_bundled_dotnet(root: Path) -> None:
 
     os.environ.setdefault("DOTNET_ROOT", str(dotnet_root))
     os.environ.setdefault("DOTNET_MULTILEVEL_LOOKUP", "0")
+    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
     os.environ["PATH"] = str(dotnet_root) + os.pathsep + os.environ.get("PATH", "")
 
 
@@ -532,6 +533,13 @@ def main() -> None:
         import streamlit.config as st_config
 
         st_config.get_config_options()
+        try:
+            import pythonnet
+
+            pythonnet.load("coreclr")
+            import clr  # noqa: F401
+        except ImportError:
+            pass
         _log(f"ASWIFT Viewer import check passed: {viewer}")
         print(f"ASWIFT Viewer import check passed: {viewer}")
         return

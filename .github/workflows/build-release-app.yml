@@ -17,14 +17,17 @@ jobs:
             asset-name: ASWIFT-Viewer-windows-x64
             dotnet-script: windows
             package-path: build/desktop-dist/ASWIFT Viewer
+            artifact-path: build/desktop-dist/ASWIFT Viewer
           - os: macos-15-intel
             asset-name: ASWIFT-Viewer-macos-x64
             dotnet-script: unix
             package-path: build/desktop-dist/ASWIFT Viewer.app
+            artifact-path: ASWIFT-Viewer-macos-x64.zip
           - os: macos-15
             asset-name: ASWIFT-Viewer-macos-arm64
             dotnet-script: unix
             package-path: build/desktop-dist/ASWIFT Viewer.app
+            artifact-path: ASWIFT-Viewer-macos-arm64.zip
 
     steps:
       - uses: actions/checkout@v7
@@ -94,12 +97,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "${{ matrix.package-path }}" -DestinationPath "${{ matrix.asset-name }}.zip"
+          Compress-Archive -Path (Join-Path "${{ matrix.package-path }}" "*") -DestinationPath "${{ matrix.asset-name }}.zip"
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset-name }}
-          path: ${{ matrix.asset-name }}.zip
+          path: ${{ matrix.artifact-path }}
 
       - name: Attach zip to GitHub release
         if: github.event_name == 'release'
