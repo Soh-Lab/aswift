@@ -63,8 +63,13 @@ def _configure_bundled_dotnet(root: Path) -> None:
 
     os.environ.setdefault("DOTNET_ROOT", str(dotnet_root))
     os.environ.setdefault("DOTNET_MULTILEVEL_LOOKUP", "0")
-    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
+    os.environ.setdefault("PYTHONNET_RUNTIME", _pythonnet_runtime_name())
     os.environ["PATH"] = str(dotnet_root) + os.pathsep + os.environ.get("PATH", "")
+
+
+def _pythonnet_runtime_name() -> str:
+    """Return the Python.NET runtime expected by the bundled PalmSens SDK."""
+    return "netfx" if sys.platform == "win32" else "coreclr"
 
 
 def _pypalmsens_sdk_dir(root: Path) -> Path | None:
@@ -85,8 +90,12 @@ def _configure_bundled_pypalmsens(root: Path) -> None:
     """Expose bundled PalmSens SDK assemblies for pythonnet dependency resolution."""
     sdk_dir = _pypalmsens_sdk_dir(root)
     if sdk_dir is None:
+        _log(f"No bundled PalmSens SDK directory found under {root}")
         return
+    if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(str(sdk_dir))
     os.environ["PATH"] = str(sdk_dir) + os.pathsep + os.environ.get("PATH", "")
+    _log(f"Configured bundled PalmSens SDK directory: {sdk_dir}")
 
 
 def _bundled_asset_path(name: str) -> Path:
@@ -503,6 +512,7 @@ def main() -> None:
         "Environment details: "
         f"DOTNET_ROOT={os.environ.get('DOTNET_ROOT', '')} "
         f"PYTHONNET_RUNTIME={os.environ.get('PYTHONNET_RUNTIME', '')} "
+        f"PalmSens SDK={_pypalmsens_sdk_dir(root)} "
         f"ASWIFT_VIEWER_PORT={os.environ.get('ASWIFT_VIEWER_PORT', '')} "
         f"{SERVER_ENV}={os.environ.get(SERVER_ENV, '')}"
     )
@@ -560,7 +570,7 @@ def main() -> None:
         st_config.get_config_options()
         import pythonnet
 
-        pythonnet.load("coreclr")
+        pythonnet.load(os.environ.get("PYTHONNET_RUNTIME", _pythonnet_runtime_name()))
         import clr  # noqa: F401
         import pypalmsens  # noqa: F401
         _log(f"ASWIFT Viewer import check passed: {viewer}")
