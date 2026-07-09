@@ -9,6 +9,7 @@ jobs:
   build:
     name: ${{ matrix.asset-name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -18,16 +19,6 @@ jobs:
             dotnet-script: windows
             package-path: build/desktop-dist/ASWIFT Viewer
             artifact-path: build/desktop-dist/ASWIFT Viewer
-          - os: macos-15-intel
-            asset-name: ASWIFT-Viewer-macos-x64
-            dotnet-script: unix
-            package-path: build/desktop-dist/ASWIFT Viewer.app
-            artifact-path: ASWIFT-Viewer-macos-x64.zip
-          - os: macos-15
-            asset-name: ASWIFT-Viewer-macos-arm64
-            dotnet-script: unix
-            package-path: build/desktop-dist/ASWIFT Viewer.app
-            artifact-path: ASWIFT-Viewer-macos-arm64.zip
 
     steps:
       - uses: actions/checkout@v7
