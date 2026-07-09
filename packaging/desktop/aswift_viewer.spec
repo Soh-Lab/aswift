@@ -44,6 +44,7 @@ if dotnet_runtime_dir:
     datas.append((dotnet_runtime_dir, "dotnet-runtime"))
 
 hiddenimports = [
+    "clr",
     *collect_submodules("aswift"),
     *collect_submodules("streamlit"),
     *collect_submodules("plotly"),

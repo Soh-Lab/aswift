@@ -533,13 +533,11 @@ def main() -> None:
         import streamlit.config as st_config
 
         st_config.get_config_options()
-        try:
-            import pythonnet
+        import pythonnet
 
-            pythonnet.load("coreclr")
-            import clr  # noqa: F401
-        except ImportError:
-            pass
+        pythonnet.load("coreclr")
+        import clr  # noqa: F401
+        import pypalmsens  # noqa: F401
         _log(f"ASWIFT Viewer import check passed: {viewer}")
         print(f"ASWIFT Viewer import check passed: {viewer}")
         return

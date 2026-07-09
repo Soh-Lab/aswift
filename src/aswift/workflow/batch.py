@@ -597,7 +597,10 @@ def pssession_folder_to_dataframe(folder: str | Path, *, recursive: bool = False
         # noinspection PyPackageRequirements
         import pypalmsens as ps
     except ImportError as exc:
-        raise ImportError("pssession support requires the optional pypalmsens package") from exc
+        raise ImportError(
+            "pssession support requires the optional pypalmsens package "
+            f"and its .NET bridge dependencies: {exc}"
+        ) from exc
 
     folder = Path(folder)
     strip_mp3_suffix_from_pssession_files(folder, recursive=recursive)
