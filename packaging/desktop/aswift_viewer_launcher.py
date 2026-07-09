@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import socket
 import sys
 import webbrowser
@@ -64,6 +65,28 @@ def _configure_bundled_dotnet(root: Path) -> None:
     os.environ.setdefault("DOTNET_MULTILEVEL_LOOKUP", "0")
     os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
     os.environ["PATH"] = str(dotnet_root) + os.pathsep + os.environ.get("PATH", "")
+
+
+def _pypalmsens_sdk_dir(root: Path) -> Path | None:
+    """Return the bundled PalmSens .NET SDK folder for this platform."""
+    sdk_root = root / "pypalmsens" / "_libpalmsens"
+    if sys.platform == "win32":
+        candidate = sdk_root / "win"
+    elif sys.platform == "darwin":
+        machine = platform.machine().lower()
+        candidate = sdk_root / ("osx-arm64" if machine in {"arm64", "aarch64"} else "osx-x64")
+    else:
+        machine = platform.machine().lower()
+        candidate = sdk_root / ("linux-arm64" if machine in {"arm64", "aarch64"} else "linux-x64")
+    return candidate if candidate.exists() else None
+
+
+def _configure_bundled_pypalmsens(root: Path) -> None:
+    """Expose bundled PalmSens SDK assemblies for pythonnet dependency resolution."""
+    sdk_dir = _pypalmsens_sdk_dir(root)
+    if sdk_dir is None:
+        return
+    os.environ["PATH"] = str(sdk_dir) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _bundled_asset_path(name: str) -> Path:
@@ -474,10 +497,12 @@ def main() -> None:
         f"bundle_root={root}"
     )
     _configure_bundled_dotnet(root)
+    _configure_bundled_pypalmsens(root)
     _configure_streamlit_runtime()
     _log(
         "Environment details: "
         f"DOTNET_ROOT={os.environ.get('DOTNET_ROOT', '')} "
+        f"PYTHONNET_RUNTIME={os.environ.get('PYTHONNET_RUNTIME', '')} "
         f"ASWIFT_VIEWER_PORT={os.environ.get('ASWIFT_VIEWER_PORT', '')} "
         f"{SERVER_ENV}={os.environ.get(SERVER_ENV, '')}"
     )

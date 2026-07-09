@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import importlib.util
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
@@ -22,6 +23,13 @@ assets_dir = project_root / "packaging" / "desktop" / "assets"
 logo_png = assets_dir / "aswift-logo.png"
 mac_icon = assets_dir / "aswift-logo.icns"
 win_icon = assets_dir / "aswift-logo.ico"
+
+pypalmsens_spec = importlib.util.find_spec("pypalmsens")
+pypalmsens_lib_dir = None
+if pypalmsens_spec and pypalmsens_spec.submodule_search_locations:
+    candidate = Path(next(iter(pypalmsens_spec.submodule_search_locations))) / "_libpalmsens"
+    if candidate.exists():
+        pypalmsens_lib_dir = candidate
 
 datas = [
     (str(viewer), "streamlit_app"),
@@ -38,6 +46,8 @@ datas = [
     *copy_metadata("pythonnet"),
     *copy_metadata("clr_loader"),
 ]
+if pypalmsens_lib_dir is not None:
+    datas.append((str(pypalmsens_lib_dir), "pypalmsens/_libpalmsens"))
 
 dotnet_runtime_dir = os.environ.get("DOTNET_RUNTIME_DIR")
 if dotnet_runtime_dir:
