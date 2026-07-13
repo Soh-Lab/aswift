@@ -16,9 +16,9 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from aswift.peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
-from aswift.peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
-from aswift.workflow.io import get_date, read_swv_csv
+from ..peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
+from ..peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
+from .io import get_date, read_swv_csv
 
 
 @dataclass(frozen=True)

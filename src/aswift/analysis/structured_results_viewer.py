@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from aswift.workflow.batch import (
+from ..workflow.batch import (
     fit_dataframe,
     order_results_dataframe,
     pssession_folder_to_dataframe,
