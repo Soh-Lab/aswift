@@ -1568,6 +1568,7 @@ def _interactive_signal_trend(
         margin={"l": 10, "r": 240, "t": 10, "b": 10},
         legend={
             "title": {"text": "Folder / channel"},
+            "groupclick": "toggleitem",
             "orientation": "v",
             "yanchor": "top",
             "y": 0.9,

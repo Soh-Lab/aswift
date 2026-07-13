@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 from io import StringIO
 
 import numpy as np
@@ -882,6 +883,37 @@ def test_viewer_trend_and_filter_helpers() -> None:
     )
 
     assert filtered["peak"].tolist() == [1.0]
+
+
+def test_signal_trend_legend_toggles_individual_channels(monkeypatch) -> None:
+    """Verify clicking a trend legend item does not hide every channel in its folder."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    pytest.importorskip("plotly")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    results = pd.DataFrame(
+        {
+            "relative_folder": ["plate-a", "plate-a", "plate-a", "plate-a"],
+            "channel": [0, 0, 1, 1],
+            "hz": [250, 250, 250, 250],
+            "num": [0, 1, 0, 1],
+            "peak": [1.0, 1.1, 2.0, 2.1],
+        }
+    )
+    captured = {}
+
+    monkeypatch.setattr(viewer.st, "subheader", lambda *args, **kwargs: None)
+    monkeypatch.setattr(viewer.st, "columns", lambda *args, **kwargs: [nullcontext(), nullcontext()])
+    monkeypatch.setattr(viewer.st, "selectbox", lambda label, options: options[0])
+    monkeypatch.setattr(viewer.st, "plotly_chart", lambda figure, **kwargs: captured.setdefault("figure", figure))
+
+    viewer._interactive_signal_trend(results, selected_hz=250, normalize=False)
+
+    figure = captured["figure"]
+    assert len(figure.data) == 2
+    assert figure.data[0].legendgroup == figure.data[1].legendgroup == "plate-a"
+    assert figure.layout.legend.groupclick == "toggleitem"
 
 
 def test_normalization_scopes_by_subfolder_channel_and_uses_largest_group() -> None:
