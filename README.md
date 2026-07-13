@@ -56,12 +56,16 @@ viewer:
 aswift-viewer
 ```
 
+For Python workflows that need pandas dataframes but not the viewer or PalmSens
+support, install `aswift[batch]`. For dataframe and Matplotlib helpers, install
+`aswift[plot]`.
+
 Example notebooks for SWV fitting, CSV workflows, and PalmSens data are in the
-[`examples`](examples) directory.
+[`examples`](https://github.com/Soh-Lab/aswift/tree/main/examples) directory.
 
 ## Using the ASWIFT Viewer
 
-![Annotated overview of the ASWIFT Viewer interface](src/aswift/assets/demo1.png)
+![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/main/docs/assets/aswift-viewer-overview.png)
 
 The viewer displays the selected voltammogram and its fitted background and
 peak, a table of values extracted from that fit, and a trend plot across the
@@ -158,7 +162,8 @@ The returned `FitResult` contains:
 
 Use one row per voltammogram. The `voltage` and `current` columns each contain
 the full array for that trace; additional metadata columns such as `file`,
-`hz`, `num`, `channel`, and `time` are preserved.
+`hz`, `num`, `channel`, and `time` are preserved. This workflow requires the
+`batch`, `plot`, or `viewer` extra.
 
 ```python
 from aswift import fit_dataframe, results_to_signal_table
@@ -224,7 +229,9 @@ python -m build
 ```
 
 Desktop packaging and release instructions are documented in
-[`release_assets/README.md`](release_assets/README.md).
+[`release_assets/README.md`](https://github.com/Soh-Lab/aswift/blob/main/release_assets/README.md).
+The maintainer checklist for publishing GitHub and PyPI releases is in
+[`docs/RELEASING.md`](https://github.com/Soh-Lab/aswift/blob/main/docs/RELEASING.md).
 
 ## Bug reports and feature requests
 
@@ -243,4 +250,5 @@ Engineering.
 
 ## License
 
-ASWIFT is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+ASWIFT is licensed under the MIT License. See
+[LICENSE](https://github.com/Soh-Lab/aswift/blob/main/LICENSE) for details.

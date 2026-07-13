@@ -189,8 +189,14 @@ def _default_worker_count() -> int:
 
 class _ProgressProtocol(Protocol):
     """Structural interface for progress reporters used during batch fitting."""
-    def update(self, completed: int, total: int, label: str | None = None, *, force: bool = False) -> None: ...
-    def callback(self, label: str | None = None) -> Callable[[int, int], None]: ...
+
+    def update(self, completed: int, total: int, label: str | None = None, *, force: bool = False) -> None:
+        """Report completed work, optionally bypassing display throttling."""
+        ...
+
+    def callback(self, label: str | None = None) -> Callable[[int, int], None]:
+        """Return a two-argument callback for batch-fitting progress hooks."""
+        ...
 
 
 class _StreamlitProgress:

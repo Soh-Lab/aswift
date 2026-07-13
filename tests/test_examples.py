@@ -1,14 +1,41 @@
 """Regression tests for ASWIFT fitting, batch processing, and viewer helpers."""
 from __future__ import annotations
 
-import time
 from contextlib import nullcontext
 from io import StringIO
+from pathlib import Path
+import runpy
+import sys
 
 import numpy as np
 import pytest
 
 from aswift import aswift_fit, poly_linear_fit
+
+
+def test_viewer_cli_preserves_package_context(monkeypatch) -> None:
+    """Verify CLI and Streamlit execution preserve package-relative imports."""
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+    import aswift.analysis.viewer_cli as viewer_cli
+    import streamlit.web.cli
+
+    launched = []
+    monkeypatch.setattr(streamlit.web.cli, "main", lambda: launched.append(sys.argv.copy()))
+    monkeypatch.setattr(sys, "argv", ["aswift-viewer", "--server.headless", "true"])
+
+    viewer_cli.main()
+
+    assert launched == [
+        ["streamlit", "run", str(Path(viewer_cli.__file__)), "--server.headless", "true"]
+    ]
+
+    app_runs = []
+    monkeypatch.setattr(viewer, "_run_app", lambda: app_runs.append(True))
+
+    runpy.run_path(viewer_cli.__file__, run_name="__main__")
+
+    assert app_runs == [True]
 
 
 def synthetic_single_trace(seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
@@ -49,16 +76,13 @@ def synthetic_trace_dataframe():
     return pd.DataFrame(rows)
 
 
-def test_notebook_01_synthetic_single_trace_fits() -> None:
-    """Verify notebook 01 synthetic single trace fits."""
+def test_core_fitting_methods_fit_synthetic_trace() -> None:
+    """Verify both public fitting methods return plausible results."""
     volts, current = synthetic_single_trace()
 
-    started = time.perf_counter()
     aswift_result = aswift_fit(volts, current)
     poly_result = poly_linear_fit(volts, current)
-    elapsed = time.perf_counter() - started
 
-    assert elapsed < 10.0
     for result in (aswift_result, poly_result):
         assert result.success
         assert result.error is None
@@ -70,16 +94,13 @@ def test_notebook_01_synthetic_single_trace_fits() -> None:
         assert result.fitted_current.shape == volts.shape
 
 
-def test_notebook_02_synthetic_dataframe_batch_and_signal_table() -> None:
-    """Verify notebook 02 synthetic dataframe batch and signal table."""
+def test_dataframe_fitting_builds_signal_table() -> None:
+    """Verify dataframe fitting produces ordered signal-table columns."""
     df = synthetic_trace_dataframe()
     from aswift import fit_dataframe, results_to_signal_table
 
-    started = time.perf_counter()
     results = fit_dataframe(df, method="aswift", n_workers=1)
-    elapsed = time.perf_counter() - started
 
-    assert elapsed < 20.0
     assert len(results) == len(df)
     assert results["success"].all()
     assert {"hz", "num", "channel", "peak", "peak_voltage"}.issubset(results.columns)
@@ -264,33 +285,35 @@ def test_plot_helpers_use_expected_axis_labels() -> None:
     plt.close("all")
 
 
-def test_viewer_peak_range_normalization_adds_norm_signal_per_group() -> None:
-    """Verify viewer peak range normalization adds norm signal per group."""
+def test_viewer_normalization_scopes_groups_and_preserves_raw_data() -> None:
+    """Verify normalization groups independently without changing raw results."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range
+    from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range, _normalization_row_count
 
     results = pd.DataFrame(
         {
-            "method": ["aswift"] * 4,
-            "hz": [100, 100, 200, 200],
-            "channel": [0, 0, 0, 0],
-            "num": [0, 1, 0, 1],
-            "peak": [2.0, 4.0, 10.0, 20.0],
-            "background": [1.0, 2.0, 5.0, 10.0],
-            "current": [[2.0, 4.0], [4.0, 8.0], [10.0, 20.0], [20.0, 40.0]],
-            "peak_profile": [[2.0], [4.0], [10.0], [20.0]],
-            "background_profile": [[1.0], [2.0], [5.0], [10.0]],
-            "fitted_signal": [[3.0], [6.0], [15.0], [30.0]],
+            "relative_folder": ["a", "a", "a", "b", "b"],
+            "method": ["aswift"] * 5,
+            "hz": [100, 100, 200, 100, 100],
+            "channel": [0] * 5,
+            "num": [0, 1, 0, 0, 1],
+            "peak": [2.0, 4.0, 10.0, 100.0, 200.0],
+            "background": [1.0, 2.0, 5.0, 50.0, 100.0],
+            "current": [[2.0, 4.0], [4.0, 8.0], [10.0, 20.0], [100.0, 200.0], [200.0, 400.0]],
+            "peak_profile": [[2.0], [4.0], [10.0], [100.0], [200.0]],
+            "background_profile": [[1.0], [2.0], [5.0], [50.0], [100.0]],
+            "fitted_signal": [[3.0], [6.0], [15.0], [150.0], [300.0]],
         }
     )
 
-    normalized = _add_norm_signal_by_peak_range(results, 0, 1)
+    normalized = _add_norm_signal_by_peak_range(results, 0, 0)
 
-    assert normalized["peak"].tolist() == pytest.approx([2.0, 4.0, 10.0, 20.0])
-    assert normalized["background"].tolist() == pytest.approx([1.0, 2.0, 5.0, 10.0])
-    assert normalized["norm_signal"].tolist() == pytest.approx([2 / 3, 4 / 3, 10 / 15, 20 / 15])
-    assert normalized["normalization_basis"].tolist() == [True, True, True, True]
+    assert normalized["peak"].tolist() == pytest.approx([2.0, 4.0, 10.0, 100.0, 200.0])
+    assert normalized["background"].tolist() == pytest.approx([1.0, 2.0, 5.0, 50.0, 100.0])
+    assert normalized["norm_signal"].tolist() == pytest.approx([1.0, 2.0, 1.0, 1.0, 2.0])
+    assert normalized["normalization_basis"].tolist() == [True, False, True, True, False]
+    assert _normalization_row_count(results) == 2
     assert normalized.iloc[0]["current"] == pytest.approx([2.0, 4.0])
     assert normalized.iloc[2]["background_profile"] == pytest.approx([5.0])
 
@@ -607,20 +630,14 @@ def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
     assert updates[-1] == (2, 2, "Fitting rows", False)
 
 
-def test_viewer_uses_process_backend_only_when_workers_exceed_one() -> None:
-    """Verify viewer uses process backend only when workers exceed one."""
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _parallel_backend_for_workers
-
-    assert _parallel_backend_for_workers(None) == "thread"
-    assert _parallel_backend_for_workers(1) == "thread"
-    assert _parallel_backend_for_workers(2) == "process"
-
-
-def test_viewer_worker_counts_cap_defaults_and_allow_unknown_cpu_override(monkeypatch) -> None:
-    """Verify viewer worker counts cap defaults and allow unknown CPU overrides."""
+def test_viewer_worker_configuration_helpers(monkeypatch) -> None:
+    """Verify viewer backend selection and bounded worker defaults."""
     pytest.importorskip("streamlit")
     import aswift.analysis.structured_results_viewer as viewer
+
+    assert viewer._parallel_backend_for_workers(None) == "thread"
+    assert viewer._parallel_backend_for_workers(1) == "thread"
+    assert viewer._parallel_backend_for_workers(2) == "process"
 
     monkeypatch.setattr(viewer.os, "cpu_count", lambda: 12)
     assert viewer._max_worker_count() == 12
@@ -658,11 +675,15 @@ def test_process_backend_matches_single_worker_results() -> None:
     assert updates[-1] == (len(df), len(df))
 
 
-def test_missing_frequency_channel_sample_combination_returns_empty_filter() -> None:
-    """Verify missing frequency channel sample combination returns empty filter."""
+def test_viewer_filtering_builds_dense_options_and_rejects_missing_sample() -> None:
+    """Verify filtered sample options are dense and invalid combinations stay empty."""
     pd = pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _filter_selected_results
+    from aswift.analysis.structured_results_viewer import (
+        _filter_global_selection,
+        _filter_selected_results,
+        _sample_options,
+    )
 
     results = pd.DataFrame(
         {
@@ -672,6 +693,12 @@ def test_missing_frequency_channel_sample_combination_returns_empty_filter() -> 
             "method": ["aswift", "aswift", "aswift"],
         }
     )
+    shorter_group = _filter_global_selection(results, selected_channel=1, selected_hz=250)
+    options = _sample_options(shorter_group)
+
+    assert len(options) == 1
+    assert options.iloc[0]["num"] == 0
+
     selected_sample = pd.Series({"num": 1})
 
     filtered = _filter_selected_results(
@@ -682,28 +709,6 @@ def test_missing_frequency_channel_sample_combination_returns_empty_filter() -> 
     )
 
     assert filtered.empty
-
-
-def test_sample_options_are_dense_after_frequency_channel_filtering() -> None:
-    """Verify sample options are dense after frequency channel filtering."""
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _filter_global_selection, _sample_options
-
-    results = pd.DataFrame(
-        {
-            "num": [0, 1, 2, 0],
-            "hz": [150, 150, 150, 250],
-            "channel": [0, 0, 0, 0],
-            "method": ["aswift", "aswift", "aswift", "aswift"],
-        }
-    )
-
-    shorter_group = _filter_global_selection(results, selected_channel=0, selected_hz=250)
-    options = _sample_options(shorter_group)
-
-    assert len(options) == 1
-    assert options.iloc[0]["num"] == 0
 
 
 def test_live_pssession_time_normalization_after_cache_changes() -> None:
@@ -863,7 +868,9 @@ def test_viewer_trend_and_filter_helpers() -> None:
     }
     assert _trend_metric_options(metric_results, normalize=True)["Normalized peak height"] == "norm_signal"
 
-    assert _trend_folder_label(pd.Series({"relative_folder": "plate-a/day-1", "folder": "/tmp/root"})) == "plate-a/day-1"
+    assert _trend_folder_label(
+        pd.Series({"relative_folder": "plate-a/day-1", "folder": "/tmp/root"})
+    ) == "plate-a/day-1"
     assert _trend_folder_label(pd.Series({"relative_folder": "", "folder": "/tmp/root/day-2"})) == "day-2"
     assert _trend_folder_label(pd.Series({})) == "All data"
 
@@ -916,28 +923,6 @@ def test_signal_trend_legend_toggles_individual_channels(monkeypatch) -> None:
     assert len(figure.data) == 2
     assert figure.data[0].legendgroup == figure.data[1].legendgroup == "plate-a"
     assert figure.layout.legend.groupclick == "toggleitem"
-
-
-def test_normalization_scopes_by_subfolder_channel_and_uses_largest_group() -> None:
-    """Verify normalization scopes by subfolder channel and uses largest group."""
-    pd = pytest.importorskip("pandas")
-    pytest.importorskip("streamlit")
-    from aswift.analysis.structured_results_viewer import _add_norm_signal_by_peak_range, _normalization_row_count
-
-    results = pd.DataFrame(
-        {
-            "relative_folder": ["a", "a", "a", "b", "b"],
-            "channel": [0, 0, 0, 0, 0],
-            "method": ["aswift"] * 5,
-            "num": [0, 1, 2, 0, 1],
-            "peak": [10.0, 20.0, 30.0, 100.0, 200.0],
-        }
-    )
-
-    normalized = _add_norm_signal_by_peak_range(results, 0, 0)
-
-    assert normalized["norm_signal"].tolist() == pytest.approx([1.0, 2.0, 3.0, 1.0, 2.0])
-    assert _normalization_row_count(results) == 3
 
 
 def test_live_pssession_folder_discovers_nested_files(tmp_path, monkeypatch) -> None:

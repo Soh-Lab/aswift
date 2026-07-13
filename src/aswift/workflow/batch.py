@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import re
 import ast
 import multiprocessing as mp
+import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -592,6 +592,17 @@ def pssession_folder_to_dataframe(folder: str | Path, *, recursive: bool = False
     and net current arrays, preserving file, timestamp, frequency, and channel.
     Set ``recursive=True`` to discover files in nested subfolders while
     preserving ``relative_folder`` and ``source_path`` metadata.
+
+    Args:
+        folder: Directory containing PalmSens session files.
+        recursive: Whether to search nested directories.
+
+    Returns:
+        An ordered trace dataframe with one row per detected SWV channel.
+
+    Raises:
+        ImportError: If the optional PalmSens dependencies are unavailable.
+        ValueError: If no session files or readable SWV traces are found.
     """
     try:
         # noinspection PyPackageRequirements
@@ -673,6 +684,19 @@ def strip_mp3_suffix_from_pssession_files(
     Some transfer/download paths append an `.mp3` suffix to PalmSens session
     files. This helper removes only that final suffix, leaving unrelated `.mp3`
     files untouched. Existing destination files are never overwritten.
+
+    Args:
+        folder: Directory containing downloaded PalmSens files.
+        recursive: Whether to search nested directories.
+        dry_run: If true, report proposed renames without modifying files.
+
+    Returns:
+        ``(source, target)`` path pairs for renamed or proposed files.
+
+    Raises:
+        FileNotFoundError: If ``folder`` does not exist.
+        NotADirectoryError: If ``folder`` is not a directory.
+        FileExistsError: If a target `.pssession` file already exists.
     """
     folder = Path(folder)
     if not folder.exists():
@@ -706,10 +730,21 @@ def fit_pssession_folder(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read `.pssession` files from a folder and fit each SWV trace.
 
-    Returns the trace dataframe and a fitted result dataframe. The
-    result rows are ordered by acquisition time, frequency, file number, and
-    channel when those fields are available. Set ``recursive=True`` to include
-    nested subfolders in the PalmSens file discovery step.
+    Result rows are ordered by acquisition time, frequency, file number, and
+    channel when those fields are available.
+
+    Args:
+        folder: Directory containing PalmSens session files.
+        method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
+        settings: Optional settings object for the selected method.
+        n_workers: Number of fitting workers; ``None`` uses one worker.
+        parallel_backend: ``"serial"``, ``"thread"``, or ``"process"``.
+        chunksize: Process-pool task chunk size.
+        recursive: Whether to include nested PalmSens directories.
+        progress_callback: Optional callable receiving ``(completed, total)``.
+
+    Returns:
+        ``(traces, results)`` dataframes for the loaded and fitted SWV data.
     """
     df = pssession_folder_to_dataframe(folder, recursive=recursive)
     group_cols = [
@@ -730,7 +765,17 @@ def fit_pssession_folder(
 
 
 def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Sort SWV trace rows by time, frequency, trace number, and channel."""
+    """Sort SWV trace rows by time, frequency, trace number, and channel.
+
+    Timestamp strings are parsed as UTC. If no elapsed ``time`` column exists,
+    one is derived in hours from the earliest valid timestamp.
+
+    Args:
+        df: Trace dataframe to copy and order.
+
+    Returns:
+        The ordered copy with a dense integer index.
+    """
     df = df.copy()
     if "timestamp" in df.columns:
         parsed = cast(pd.Series, pd.to_datetime(df["timestamp"], errors="coerce", utc=True))
@@ -747,7 +792,14 @@ def order_swv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def order_results_dataframe(results_df: pd.DataFrame) -> pd.DataFrame:
-    """Sort fitted result rows by time, frequency, trace number, and channel."""
+    """Sort fitted result rows by time, frequency, trace number, and channel.
+
+    Args:
+        results_df: Fitted results dataframe to copy and order.
+
+    Returns:
+        The ordered copy with parsed UTC timestamps and a dense integer index.
+    """
     results_df = results_df.copy()
     if "timestamp" in results_df.columns:
         results_df["timestamp"] = pd.to_datetime(results_df["timestamp"], errors="coerce", utc=True)
@@ -813,6 +865,15 @@ def fit_result_from_row(row: pd.Series | dict[str, Any]) -> FitResult:
     Batch fitting stores array-valued columns so results can be saved,
     filtered, and plotted later. This helper converts one selected row back
     into the same object returned by ``aswift_fit`` or ``poly_linear_fit``.
+
+    Args:
+        row: Mapping or pandas row containing fit metrics and profile arrays.
+
+    Returns:
+        A reconstructed ``FitResult``.
+
+    Raises:
+        ValueError: If required result fields are absent.
     """
     voltage_key = "voltage" if "voltage" in row else "volts"
     current_key = "current" if "current" in row else "signal"

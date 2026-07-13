@@ -7,14 +7,18 @@ name = "aswift"
 version = "0.1.0"
 license = "MIT"
 description = "ASWIFT peak fitting utilities for square-wave voltammetry"
+keywords = ["electrochemistry", "square-wave voltammetry", "peak fitting", "SWV"]
 authors = [
     {name = "Max Yates", email = "mlyates@stanford.edu"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Chemistry",
 ]
 dependencies = [
     "numpy>=2.0",
@@ -32,7 +36,11 @@ Documentation = "https://github.com/Soh-Lab/aswift#readme"
 "Soh Lab Website" = "https://sohlab.stanford.edu/"
 
 [project.optional-dependencies]
-plot = ["matplotlib>=3.10"]
+batch = ["pandas>=2.2"]
+plot = [
+    "matplotlib>=3.10",
+    "pandas>=2.2",
+]
 viewer = [
     "matplotlib>=3.10",
     "pandas>=2.2",

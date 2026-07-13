@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import os
-import platform
-import socket
-import sys
-import webbrowser
 import atexit
 import contextlib
 import json
-import traceback
 import multiprocessing as mp
+import os
+import platform
+import signal
+import socket
 import subprocess
+import sys
 import tempfile
 import time
+import traceback
 import urllib.error
 import urllib.request
-import signal
+import webbrowser
 from pathlib import Path
 
 
@@ -519,7 +519,7 @@ def main() -> None:
     import_check = os.environ.get("ASWIFT_VIEWER_IMPORT_CHECK") == "1"
     server_mode = os.environ.get(SERVER_ENV) == "1"
 
-    viewer = root / "streamlit_app" / "structured_results_viewer.py"
+    viewer = root / "streamlit_app" / "viewer_cli.py"
     if not viewer.exists():
         raise SystemExit(f"ASWIFT Viewer could not find the bundled Streamlit app: {viewer}")
 

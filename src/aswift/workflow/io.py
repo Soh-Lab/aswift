@@ -2,9 +2,12 @@
 
 import csv
 from datetime import datetime
+from pathlib import Path
+
+from numpy.typing import NDArray
 
 
-def read_swv_csv(path):
+def read_swv_csv(path: str | Path) -> tuple[NDArray, NDArray]:
     """Read one potentiostat CSV into voltage and channel-current arrays.
 
     Args:
@@ -29,7 +32,7 @@ def read_swv_csv(path):
     return volts, currents
 
 
-def get_date(file):
+def get_date(file: str | Path) -> datetime | None:
     """Read the measurement timestamp from a formatted SWV CSV.
 
     Args:

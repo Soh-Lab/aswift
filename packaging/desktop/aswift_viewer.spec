@@ -8,17 +8,22 @@ Microsoft .NET Runtime install.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
-import importlib.util
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+    copy_metadata,
+)
 
 
 project_root = Path(SPECPATH).parents[1]
 launcher = project_root / "packaging" / "desktop" / "aswift_viewer_launcher.py"
-viewer = project_root / "src" / "aswift" / "analysis" / "structured_results_viewer.py"
+viewer = project_root / "src" / "aswift" / "analysis" / "viewer_cli.py"
 assets_dir = project_root / "packaging" / "desktop" / "assets"
 logo_png = assets_dir / "aswift-logo.png"
 mac_icon = assets_dir / "aswift-logo.icns"
