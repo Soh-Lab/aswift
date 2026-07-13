@@ -9,8 +9,8 @@ except importlib.metadata.PackageNotFoundError:
     # without being formally installed via pip
     __version__ = "0.1.0-dev"
 
-from aswift.peak_extraction.extract_peaks import aswift_fit, fit_signal, poly_linear_fit
-from aswift.peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
+from .peak_extraction.extract_peaks import aswift_fit, fit_signal, poly_linear_fit
+from .peak_extraction.models import AswiftSettings, FitResult, PolyLinearSettings
 
 # Types in workflow.batch and analysis.plots are lazy-loaded via __getattr__ below to
 # prevent large, transitively-loaded libraries imported there (pandas, matplotlib) from
@@ -20,13 +20,13 @@ from aswift.peak_extraction.models import AswiftSettings, FitResult, PolyLinearS
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aswift.workflow.batch import (SwvTrace, dataframe_to_traces, fit_dataframe,
+    from .workflow.batch import (SwvTrace, dataframe_to_traces, fit_dataframe,
         fit_pssession_folder, fit_results_to_dataframe, fit_traces, fit_result_from_row,
         formatted_csvs_to_dataframe, long_form_to_trace_dataframe, order_results_dataframe,
         order_swv_dataframe, pssession_folder_to_dataframe, results_to_signal_table,
         strip_mp3_suffix_from_pssession_files,
     )
-    from aswift.analysis.plots import (plot_fit_result, plot_fit_result_from_row, plot_signal_over_time)
+    from .analysis.plots import (plot_fit_result, plot_fit_result_from_row, plot_signal_over_time)
 
 _CORE_EXPORTS = [
     "AswiftSettings",
@@ -65,11 +65,11 @@ __all__ = _CORE_EXPORTS + _BATCH_EXPORTS + _PLOTS_EXPORTS
 def __getattr__(name: str):
     """Lazily expose optional batch and plotting helpers from the top-level package."""
     if name in _BATCH_EXPORTS:
-        from aswift.workflow import batch
+        from .workflow import batch
 
         return getattr(batch, name)
     if name in _PLOTS_EXPORTS:
-        from aswift.analysis import plots
+        from .analysis import plots
 
         return getattr(plots, name)
     raise AttributeError(f"module 'aswift' has no attribute {name!r}")

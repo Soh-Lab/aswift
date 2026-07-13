@@ -11,11 +11,18 @@ import time
 import traceback
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable, cast, Protocol
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from ..workflow.batch import (
+    fit_dataframe,
+    order_results_dataframe,
+    pssession_folder_to_dataframe,
+    strip_mp3_suffix_from_pssession_files,
+)
 
 ARRAY_COLUMNS = {
     "voltage",
@@ -61,10 +68,6 @@ DOWNLOAD_DROP_COLUMNS = {
     "normalization_reference_peak",
 }
 
-fit_dataframe = None
-order_results_dataframe = None
-pssession_folder_to_dataframe = None
-strip_mp3_suffix_from_pssession_files = None
 
 
 def _viewer_log_path() -> Path:
@@ -113,30 +116,7 @@ def _log_viewer_message(message: str) -> None:
         pass
 
 
-def _ensure_aswift_runtime_loaded() -> None:
-    """Lazily import ASWIFT workflow functions needed by the Streamlit app."""
-    missing_workflow_names = [
-        "fit_dataframe",
-        "order_results_dataframe",
-        "pssession_folder_to_dataframe",
-        "strip_mp3_suffix_from_pssession_files",
-    ]
-    if any(globals().get(name) is None for name in missing_workflow_names):
-        from aswift.workflow.batch import (
-            fit_dataframe as _fit_dataframe,
-            order_results_dataframe as _order_results_dataframe,
-            pssession_folder_to_dataframe as _pssession_folder_to_dataframe,
-            strip_mp3_suffix_from_pssession_files as _strip_mp3_suffix_from_pssession_files,
-        )
 
-        if globals().get("fit_dataframe") is None:
-            globals()["fit_dataframe"] = _fit_dataframe
-        if globals().get("order_results_dataframe") is None:
-            globals()["order_results_dataframe"] = _order_results_dataframe
-        if globals().get("pssession_folder_to_dataframe") is None:
-            globals()["pssession_folder_to_dataframe"] = _pssession_folder_to_dataframe
-        if globals().get("strip_mp3_suffix_from_pssession_files") is None:
-            globals()["strip_mp3_suffix_from_pssession_files"] = _strip_mp3_suffix_from_pssession_files
 
 def _cache_data_if_streamlit_runtime(**kwargs):
     """Apply Streamlit caching only when running inside a Streamlit runtime."""
@@ -171,7 +151,6 @@ def _parse_array_value(value: Any) -> Any:
 
 def _prepare_results(df: pd.DataFrame, *, source_kind: str = "results") -> pd.DataFrame:
     """Validate, parse, order, and annotate fit results for viewer use."""
-    _ensure_aswift_runtime_loaded()
     missing = REQUIRED_FIT_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(f"Results file is missing required columns: {sorted(missing)}")
@@ -206,6 +185,12 @@ def _max_worker_count() -> int:
 def _default_worker_count() -> int:
     """Choose a conservative default worker count for the current machine."""
     return min(8, os.cpu_count() or 1)
+
+
+class _ProgressProtocol(Protocol):
+    """Structural interface for progress reporters used during batch fitting."""
+    def update(self, completed: int, total: int, label: str | None = None, *, force: bool = False) -> None: ...
+    def callback(self, label: str | None = None) -> Callable[[int, int], None]: ...
 
 
 class _StreamlitProgress:
@@ -409,11 +394,10 @@ def _fit_trace_dataframe(
     *,
     method: str,
     n_workers: int | None,
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
     group_cols: list[str] | None = None,
 ) -> pd.DataFrame:
     """Fit a trace dataframe with viewer progress and backend settings."""
-    _ensure_aswift_runtime_loaded()
     if _progress is not None:
         _progress.update(0, len(trace_df), "Fitting rows", force=True)
 
@@ -436,7 +420,7 @@ def _prepare_table_or_fit_traces(
     source_path: Path | None = None,
     method: str = "aswift",
     n_workers: int | None = None,
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load result tables directly or fit trace tables before preparing results."""
     if REQUIRED_FIT_COLUMNS.issubset(df.columns):
@@ -511,7 +495,7 @@ def _load_results_from_upload_impl(
     method: str,
     n_workers: int | None,
     csv_order: str,
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit uploaded JSON or CSV files."""
     if not uploads:
@@ -626,7 +610,7 @@ def _load_results_from_startup_path_impl(
     method: str,
     n_workers: int | None,
     signature: tuple[str, int, int],
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit the path supplied to the viewer at startup."""
     del signature
@@ -680,7 +664,6 @@ def _live_folder_signature_key(folder: Path, method: str) -> str:
 
 def _current_pssession_files(folder: Path) -> list[Path]:
     """Discover current PalmSens session files, including renamed .mp3 downloads."""
-    _ensure_aswift_runtime_loaded()
     strip_mp3_suffix_from_pssession_files(folder, recursive=True)
     return sorted(folder.glob("**/*.pssession"), key=lambda path: path.stat().st_mtime)
 
@@ -708,7 +691,6 @@ def _watch_live_pssession_folder(folder_text: str, method: str) -> None:
 
 def _pssession_file_to_dataframe(path: Path) -> pd.DataFrame:
     """Load a single PalmSens session file into trace rows."""
-    _ensure_aswift_runtime_loaded()
     with tempfile.TemporaryDirectory(prefix="aswift-pssession-one-") as tmp:
         temp_path = Path(tmp) / path.name
         temp_path.write_bytes(path.read_bytes())
@@ -724,7 +706,7 @@ def _fit_pssession_dataframes(
     *,
     method: str,
     n_workers: int | None,
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Fit trace dataframes loaded from one or more PalmSens files."""
     df = pd.concat(frames, ignore_index=True)
@@ -745,10 +727,9 @@ def _load_results_from_live_pssession_folder(
     folder_text: str,
     method: str,
     n_workers: int | None,
-    _progress: _StreamlitProgress | None = None,
+    _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Incrementally load, fit, cache, and export live PalmSens folder results."""
-    _ensure_aswift_runtime_loaded()
     folder = Path(folder_text).expanduser()
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -1069,7 +1050,7 @@ def _normalization_row_count(results: pd.DataFrame) -> int:
         return 0
 
     data = results.copy()
-    group_cols = [col for col in ("method", "hz", "channel") if col in data.columns]
+    group_cols: list[str] = [col for col in ("method", "hz", "channel") if col in data.columns]
     if {"relative_folder", "folder"} & set(data.columns):
         data["__norm_folder"] = data.apply(_trend_folder_label, axis=1)
         group_cols.insert(0, "__norm_folder")
@@ -1377,7 +1358,7 @@ def _trend_x_column(data: pd.DataFrame) -> tuple[pd.DataFrame, str, str, str]:
         data["__trend_x"] = pd.to_numeric(data["time"], errors="coerce")
         return data, "__trend_x", "Time (hours)", "quantitative"
     if "timestamp" in data.columns:
-        timestamps = pd.to_datetime(data["timestamp"], errors="coerce")
+        timestamps = cast(pd.Series, pd.to_datetime(data["timestamp"], errors="coerce"))
         if timestamps.notna().any():
             data["__trend_x"] = timestamps
             return data, "__trend_x", "Timestamp", "temporal"
@@ -1400,7 +1381,7 @@ def _format_channel_label(value: Any) -> str:
         return "Unknown"
     if isinstance(value, (float, np.floating)) and float(value).is_integer():
         return str(int(value))
-    return str(value)
+    return str(cast(Any, value))
 
 
 def _trend_folder_label(row: pd.Series) -> str:
@@ -1597,12 +1578,6 @@ def _run_app() -> None:
     st.set_page_config(page_title="SWV Fit Results Viewer", page_icon=str(logo_path), layout="wide")
     _inject_style()
     st.title("SWV Fit Results Viewer")
-    startup_notice = st.empty()
-    startup_notice.info("Loading ASWIFT analysis libraries...")
-    load_started = time.monotonic()
-    _ensure_aswift_runtime_loaded()
-    _log_viewer_message(f"Loaded ASWIFT analysis libraries in {time.monotonic() - load_started:.2f}s")
-    startup_notice.empty()
 
     input_section = st.sidebar.expander("Input", expanded=True)
     startup_path = _startup_results_path()

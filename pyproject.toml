@@ -36,14 +36,13 @@ plot = ["matplotlib>=3.10"]
 viewer = [
     "matplotlib>=3.10",
     "pandas>=2.2",
-    "plotly>=5.24",
+    "plotly>=5.24.1,<6.0.0",
     "pypalmsens>=1.9.0",
     "streamlit>=1.46",
 ]
 developer = [
     "aswift[viewer]",
     "pytest>=8.0",
-    "loguru==0.7.3",
     "pydantic==2.11.4",
 ]
 

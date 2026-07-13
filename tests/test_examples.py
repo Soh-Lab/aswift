@@ -161,7 +161,8 @@ def test_single_row_sample_selection_does_not_use_slider(monkeypatch) -> None:
             """Initialize the helper object."""
             self.slider_called = False
 
-        def caption(self, text: str) -> None:
+        @staticmethod
+        def caption(text: str) -> None:
             """Validate the caption text written by the code under test."""
             assert text == "Sample index: 0"
 
@@ -553,7 +554,8 @@ def test_upload_trace_csv_impl_reports_progress(monkeypatch) -> None:
 
     class Progress:
         """Progress stub that records updates from viewer fitting helpers."""
-        def update(self, completed, total, label=None, *, force=False):
+        @staticmethod
+        def update(completed, total, label=None, *, force=False):
             """Record or display progress for a fitting operation."""
             updates.append((completed, total, label, force))
 
