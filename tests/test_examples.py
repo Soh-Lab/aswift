@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from io import StringIO
+import importlib.util
 from pathlib import Path
 import runpy
 import sys
@@ -11,6 +12,44 @@ import numpy as np
 import pytest
 
 from aswift import aswift_fit, poly_linear_fit
+
+
+def _load_desktop_launcher():
+    """Load the desktop launcher without requiring it to be a package module."""
+    launcher_path = (
+        Path(__file__).parents[1] / "packaging" / "desktop" / "aswift_viewer_launcher.py"
+    )
+    spec = importlib.util.spec_from_file_location("aswift_viewer_launcher", launcher_path)
+    assert spec is not None and spec.loader is not None
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    return launcher
+
+
+def test_desktop_launcher_unblocks_downloaded_dotnet_assemblies(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Verify the Windows launcher removes downloaded-file markers from DLLs."""
+    launcher = _load_desktop_launcher()
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+
+    pythonnet_dir = tmp_path / "pythonnet" / "runtime"
+    palmsens_dir = tmp_path / "pypalmsens" / "_libpalmsens" / "win"
+    unrelated_dir = tmp_path / "unrelated"
+    for directory, name in (
+        (pythonnet_dir, "Python.Runtime.dll"),
+        (palmsens_dir, "PalmSens.Core.dll"),
+        (unrelated_dir, "Other.dll"),
+    ):
+        directory.mkdir(parents=True)
+        (directory / name).touch()
+        (directory / f"{name}:Zone.Identifier").touch()
+
+    launcher._unblock_bundled_windows_assemblies(tmp_path)
+
+    assert not (pythonnet_dir / "Python.Runtime.dll:Zone.Identifier").exists()
+    assert not (palmsens_dir / "PalmSens.Core.dll:Zone.Identifier").exists()
+    assert (unrelated_dir / "Other.dll:Zone.Identifier").exists()
 
 
 def test_viewer_cli_preserves_package_context(monkeypatch) -> None:

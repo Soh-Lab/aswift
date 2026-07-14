@@ -55,6 +55,39 @@ def _bundle_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _unblock_bundled_windows_assemblies(root: Path) -> None:
+    """Remove Internet-zone markers from bundled managed Windows assemblies.
+
+    Windows can propagate a downloaded ZIP's ``Zone.Identifier`` stream to
+    extracted files.  .NET Framework may then refuse to reflect an assembly,
+    which makes Python.NET report that ``Python.Runtime.Loader.Initialize``
+    could not be resolved even though ``Python.Runtime.dll`` is present.
+    """
+    if sys.platform != "win32":
+        return
+
+    assembly_roots = (
+        root / "pythonnet" / "runtime",
+        root / "pypalmsens" / "_libpalmsens" / "win",
+    )
+    unblocked = 0
+    for assembly_root in assembly_roots:
+        if not assembly_root.exists():
+            continue
+        for dll in assembly_root.rglob("*.dll"):
+            zone_identifier = dll.with_name(f"{dll.name}:Zone.Identifier")
+            try:
+                zone_identifier.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                _log(f"Could not remove Internet-zone marker from {dll}: {exc}")
+            else:
+                unblocked += 1
+    if unblocked:
+        _log(f"Removed Internet-zone markers from {unblocked} bundled .NET assemblies")
+
+
 def _configure_bundled_dotnet(root: Path) -> None:
     """Prefer an app-local .NET runtime when the release bundle includes one."""
     dotnet_root = root / "dotnet-runtime"
@@ -505,6 +538,7 @@ def main() -> None:
         f"cwd={Path.cwd()} "
         f"bundle_root={root}"
     )
+    _unblock_bundled_windows_assemblies(root)
     _configure_bundled_dotnet(root)
     _configure_bundled_pypalmsens(root)
     _configure_streamlit_runtime()

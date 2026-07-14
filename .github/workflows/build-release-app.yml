@@ -91,6 +91,36 @@ jobs:
             "build/desktop-dist/ASWIFT Viewer.app/Contents/MacOS/ASWIFT Viewer"
           fi
 
+      - name: Simulate a downloaded Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $assemblyRoots = @(
+            "${{ matrix.package-path }}/_internal/pythonnet/runtime",
+            "${{ matrix.package-path }}/_internal/pypalmsens/_libpalmsens/win"
+          )
+          foreach ($root in $assemblyRoots) {
+            Get-ChildItem -LiteralPath $root -Filter *.dll -Recurse | ForEach-Object {
+              Set-Content -LiteralPath $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`nZoneId=3"
+            }
+          }
+
+      - name: Smoke test downloaded Windows bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ASWIFT_VIEWER_IMPORT_CHECK: "1"
+        run: |
+          & "${{ matrix.package-path }}/ASWIFT Viewer.exe"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The downloaded-bundle import check failed with exit code $LASTEXITCODE"
+          }
+          $blocked = Get-ChildItem -LiteralPath "${{ matrix.package-path }}/_internal/pythonnet/runtime" -Filter *.dll -Recurse |
+            Get-Item -Stream Zone.Identifier -ErrorAction SilentlyContinue
+          if ($blocked) {
+            throw "ASWIFT Viewer did not remove the Internet-zone marker from Python.Runtime.dll"
+          }
+
       - name: Prepare macOS app bundle
         if: runner.os == 'macOS'
         shell: bash
@@ -112,7 +142,24 @@ jobs:
             -Path (Join-Path "${{ matrix.package-path }}" "*") `
             -DestinationPath "${{ matrix.asset-name }}.zip"
 
-      - uses: actions/upload-artifact@v7
+      - name: Prepare one-unzip Windows workflow artifact
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/workflow-artifact | Out-Null
+          Copy-Item -LiteralPath "${{ matrix.package-path }}" -Destination build/workflow-artifact -Recurse
+
+      - name: Upload one-unzip Windows workflow artifact
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset-name }}
+          path: build/workflow-artifact
+          if-no-files-found: error
+
+      - name: Upload release ZIP
+        if: github.event_name == 'release' || runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset-name }}
           path: ${{ matrix.artifact-path }}
