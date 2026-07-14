@@ -17,16 +17,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            asset-name: ASWIFT-Viewer-macos-arm64
-            dotnet-script: unix
-            package-path: build/desktop-dist/ASWIFT Viewer.app
-            artifact-path: ASWIFT-Viewer-macos-arm64.zip
-          - os: macos-15-intel
-            asset-name: ASWIFT-Viewer-macos-x64
-            dotnet-script: unix
-            package-path: build/desktop-dist/ASWIFT Viewer.app
-            artifact-path: ASWIFT-Viewer-macos-x64.zip
           - os: windows-latest
             asset-name: ASWIFT-Viewer-windows-x64
             dotnet-script: windows
@@ -111,9 +101,12 @@ jobs:
         env:
           ASWIFT_VIEWER_IMPORT_CHECK: "1"
         run: |
-          & "${{ matrix.package-path }}/ASWIFT Viewer.exe"
-          if ($LASTEXITCODE -ne 0) {
-            throw "The downloaded-bundle import check failed with exit code $LASTEXITCODE"
+          $process = Start-Process `
+            -FilePath "${{ matrix.package-path }}/ASWIFT Viewer.exe" `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "The downloaded-bundle import check failed with exit code $($process.ExitCode)"
           }
           $blocked = Get-ChildItem -LiteralPath "${{ matrix.package-path }}/_internal/pythonnet/runtime" -Filter *.dll -Recurse |
             Get-Item -Stream Zone.Identifier -ErrorAction SilentlyContinue
