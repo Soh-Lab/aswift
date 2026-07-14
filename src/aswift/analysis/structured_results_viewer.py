@@ -51,6 +51,8 @@ PROGRESS_UPDATE_SECONDS = 0.25
 FIT_CHUNKSIZE = 16
 UNKNOWN_CPU_WORKER_LIMIT = 8
 LOGO_NAME = "aswift-logo.png"
+NORMALIZE_ENABLED_KEY = "aswift_normalize_enabled"
+NORMALIZATION_RANGE_KEY = "aswift_normalization_range"
 FIT_TRACE_COLORS = {
     "raw": "#0072B2",
     "background": "#E69F00",
@@ -976,8 +978,8 @@ def _select_sample_position(row_count: int) -> int:
 
 
 def _normalization_controls(row_count: int) -> tuple[bool, int, int]:
-    """Render normalization controls and return the selected index range."""
-    enabled = st.sidebar.checkbox("Normalize", value=False)
+    """Render and persist normalization controls across live-data reruns."""
+    enabled = st.sidebar.checkbox("Normalize", key=NORMALIZE_ENABLED_KEY)
     if not enabled:
         return False, 0, 0
 
@@ -986,15 +988,25 @@ def _normalization_controls(row_count: int) -> tuple[bool, int, int]:
         st.sidebar.caption("Normalization range: 0")
         return True, 0, 0
 
+    stored_range = st.session_state.get(NORMALIZATION_RANGE_KEY, (0, max_idx))
+    try:
+        stored_start, stored_end = (int(value) for value in stored_range)
+    except (TypeError, ValueError):
+        stored_start, stored_end = 0, max_idx
+    stored_start = min(max(stored_start, 0), max_idx)
+    stored_end = min(max(stored_end, stored_start), max_idx)
+
     start, end = st.sidebar.slider(
         "Normalization range",
         min_value=0,
         max_value=max_idx,
-        value=(0, max_idx),
+        value=(stored_start, stored_end),
     )
     if start > end:
         start, end = end, start
-    return True, int(start), int(end)
+    selected_range = int(start), int(end)
+    st.session_state[NORMALIZATION_RANGE_KEY] = selected_range
+    return True, *selected_range
 
 
 def _add_empty_norm_signal(results: pd.DataFrame) -> pd.DataFrame:

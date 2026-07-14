@@ -72,7 +72,7 @@ full dataset.
 Choose an input source in the sidebar, then upload one or more SWV data files
 or enter the path to a directory containing a PalmSens dataset. Download
 correctly formatted sample files from the
-[`example-data-v0.1.0` release](https://github.com/Soh-Lab/aswift/releases/tag/example-data-v0.1.0).
+[`v1.0.0 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.0/example_data.zip).
 
 ASWIFT supports three input formats:
 

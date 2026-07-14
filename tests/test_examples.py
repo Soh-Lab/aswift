@@ -357,6 +357,39 @@ def test_viewer_normalization_scopes_groups_and_preserves_raw_data() -> None:
     assert normalized.iloc[2]["background_profile"] == pytest.approx([5.0])
 
 
+def test_normalization_controls_preserve_range_when_live_data_grows(monkeypatch) -> None:
+    """Verify a live-data rerun retains the selected normalization indices."""
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    class Sidebar:
+        """Minimal normalization-control stub that records slider defaults."""
+
+        def __init__(self) -> None:
+            self.defaults = []
+
+        @staticmethod
+        def checkbox(_label, *, key):
+            """Return the persisted enabled setting."""
+            assert key == viewer.NORMALIZE_ENABLED_KEY
+            return True
+
+        def slider(self, _label, *, min_value, max_value, value):
+            """Record the default and emulate the current widget selection."""
+            assert min_value == 0
+            self.defaults.append((max_value, value))
+            return (1, 2) if len(self.defaults) == 1 else value
+
+    sidebar = Sidebar()
+    monkeypatch.setattr(viewer.st, "session_state", {})
+    monkeypatch.setattr(viewer.st, "sidebar", sidebar)
+
+    assert viewer._normalization_controls(4) == (True, 1, 2)
+    assert viewer._normalization_controls(5) == (True, 1, 2)
+    assert sidebar.defaults == [(3, (0, 3)), (4, (1, 2))]
+    assert viewer.st.session_state[viewer.NORMALIZATION_RANGE_KEY] == (1, 2)
+
+
 def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signal() -> None:
     """Verify viewer results download hides internal columns and preserves norm signal."""
     pd = pytest.importorskip("pandas")

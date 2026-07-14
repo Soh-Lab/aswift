@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-14
+
 ### Added
 - Cross-platform desktop release builds for Apple Silicon macOS, Intel macOS,
   and 64-bit Windows.
 - Package-safe Streamlit launcher support for relative imports.
 - Release-readiness documentation and packaging checks.
+- Example datasets attached automatically to the GitHub release.
 
 ### Changed
 - Consolidated overlapping viewer tests and removed environment-sensitive

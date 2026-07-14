@@ -8,10 +8,11 @@ app:
 - `ASWIFT-Viewer-windows-x64.zip`
 - `ASWIFT-Viewer-macos-x64.zip`
 - `ASWIFT-Viewer-macos-arm64.zip`
+- `example_data.zip`, containing sample CSV and PalmSens datasets
 
-Each zip contains a frozen copy of Python, ASWIFT, Streamlit, and the viewer's
-Python dependencies. Users do not need to install Python, pip, a C++ compiler,
-or run `streamlit run`.
+Each desktop-app zip contains a frozen copy of Python, ASWIFT, Streamlit, and
+the viewer's Python dependencies. Users do not need to install Python, pip, a
+C++ compiler, or run `streamlit run`.
 
 ## PalmSens and .NET
 
@@ -26,8 +27,9 @@ runtime. There are two viable release policies:
    install Microsoft .NET 9 Runtime separately.
 
 The GitHub Actions workflow in `.github/workflows/build-release-app.yml` uses
-policy 1 by default. Manual workflow runs publish the zips as GitHub Actions
-artifacts; published-release runs also attach the zips to the GitHub Release.
+policy 1 by default. Manual workflow runs publish the desktop zips as GitHub
+Actions artifacts; published-release runs attach the desktop zips and the
+tracked `example_data.zip` archive to the GitHub Release.
 The workflow builds macOS Intel on `macos-15-intel` and macOS Apple Silicon on
 `macos-15`; keep those labels explicit so release builds do not silently move
 when GitHub changes `macos-latest`.

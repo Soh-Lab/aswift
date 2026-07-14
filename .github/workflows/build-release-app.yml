@@ -176,6 +176,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
         with:
           pattern: ASWIFT-Viewer-*
@@ -185,4 +187,7 @@ jobs:
       - name: Attach zips to GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-zips/*.zip
+          fail_on_unmatched_files: true
+          files: |
+            release-zips/*.zip
+            release_assets/example_data.zip
