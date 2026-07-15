@@ -238,7 +238,8 @@ reports, questions, feedback, or feature requests.
 
 This work was supported by resources provided by the
 [Soh Lab](https://sohlab.stanford.edu/) within Stanford University's School of
-Engineering.
+Engineering. The authors thank Stan Yates for his development and consulting 
+contributions in preparing ASWIFT for distribution as a PyPI package.
 
 ## Author
 
