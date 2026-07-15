@@ -442,7 +442,7 @@ def _prepare_table_or_fit_traces(
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
-            results.to_json(output_path, orient="records", indent=2)
+            results.to_json(output_path, orient="records", date_format="iso", indent=2)
         return _prepare_results(results)
     simple_df = _simple_csv_to_trace_dataframe(df)
     if simple_df is not None:
@@ -454,7 +454,7 @@ def _prepare_table_or_fit_traces(
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
-            results.to_json(output_path, orient="records", indent=2)
+            results.to_json(output_path, orient="records", date_format="iso", indent=2)
         return _prepare_results(results, source_kind=SIMPLE_CSV_SOURCE)
     raise ValueError(
         "Input must be fit results, a structured trace CSV, or a simple voltage/current CSV."
@@ -813,7 +813,7 @@ def _load_results_from_live_pssession_folder(
         raise ValueError(f"No .pssession files found in {folder}")
 
     results = _normalize_result_time(order_results_dataframe(pd.concat(frames, ignore_index=True)))
-    results.to_json(folder / RESULTS_JSON_NAME, orient="records", indent=2)
+    results.to_json(folder / RESULTS_JSON_NAME, orient="records", date_format="iso", indent=2)
     st.session_state[_live_folder_signature_key(folder, method)] = current_signature
     return _prepare_results(results)
 
@@ -1585,7 +1585,7 @@ def _interactive_signal_trend(
     }
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         config=chart_config,
     )
 
@@ -1766,7 +1766,7 @@ def _run_app() -> None:
         )
         st.plotly_chart(
             fig,
-            use_container_width=True,
+            width="stretch",
             config={
                 "displaylogo": False,
                 "displayModeBar": True,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aswift"
-version = "1.0.0"
+version = "1.0.1"
 license = "MIT"
 description = "ASWIFT peak fitting utilities for square-wave voltammetry"
 keywords = ["electrochemistry", "square-wave voltammetry", "peak fitting", "SWV"]
@@ -51,6 +51,7 @@ viewer = [
     # until that upstream frozen-app regression is resolved.
     "pythonnet>=3.0.5,<3.1",
     "streamlit>=1.46",
+    "watchdog>=6.0",
 ]
 developer = [
     "aswift[viewer]",

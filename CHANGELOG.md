@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-15
+
+### Fixed
+- Use an absolute, version-pinned URL for the annotated ASWIFT Viewer image so
+  it renders on package-index project pages after the repository is public.
+- Point the example-data download link at the `v1.0.1` GitHub release.
+- Update Streamlit chart sizing and pandas JSON date serialization for current
+  APIs, and install Watchdog with the optional viewer dependencies.
+
 ## [1.0.0] - 2026-07-14
 
 ### Added
