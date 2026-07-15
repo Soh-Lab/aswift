@@ -1,0 +1,81 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish (for example, v1.0.0)
+        required: true
+        type: string
+
+run-name: Publish ${{ inputs.tag }} to PyPI
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate tag input
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([a-z]+[0-9]+)?$ ]]; then
+            echo "Expected a version tag such as v1.0.0 or v1.0.0rc1" >&2
+            exit 1
+          fi
+          if [[ "$WORKFLOW_REF" != "refs/tags/$RELEASE_TAG" ]]; then
+            echo "Run this workflow from the $RELEASE_TAG tag, not $WORKFLOW_REF" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: python -m twine check --strict dist/*
+
+      - name: Upload distributions for publishing
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish distributions
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/aswift/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
