@@ -13,15 +13,15 @@ viewer; Python is not required.
 
 ### Install the desktop application
 
-Precompiled applications are available in the
-[`release_assets`](https://github.com/Soh-Lab/aswift/tree/main/release_assets)
-directory. Download the archive that matches your computer:
+Precompiled applications are available from the
+[`ASWIFT 1.0.2` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.2).
+Download the archive that matches your computer:
 
 | Download | System |
 | --- | --- |
-| `macos-arm64` | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
-| `macos-x64` | Intel-based Mac |
-| `windows-x64` | 64-bit Windows |
+| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
+| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
+| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
 
 Unzip the archive, then open **ASWIFT Viewer**. Because ASWIFT is distributed
 outside the Apple App Store and Microsoft Store, your operating system may show
