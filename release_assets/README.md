@@ -1,14 +1,16 @@
 # ASWIFT Release Assets
 
-This folder is for downloadable ASWIFT release artifacts, not reusable build
-source. The reusable desktop-app packaging files live in `packaging/desktop/`.
-The recommended non-coder release artifact is a per-platform zipped PyInstaller
-app:
+This folder contains the tracked example-data archive that GitHub Actions
+attaches to each release. Download the generated desktop applications from the
+[`ASWIFT 1.0.2` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.2);
+the application ZIPs are not committed to this folder. Reusable desktop-app
+packaging files live in `packaging/desktop/`.
 
 - `ASWIFT-Viewer-windows-x64.zip`
 - `ASWIFT-Viewer-macos-x64.zip`
 - `ASWIFT-Viewer-macos-arm64.zip`
-- `example_data.zip`, containing sample CSV and PalmSens datasets
+- `example_data.zip`, containing sample CSV and PalmSens datasets and tracked
+  in this folder
 
 Each desktop-app zip contains a frozen copy of Python, ASWIFT, Streamlit, and
 the viewer's Python dependencies. Users do not need to install Python, pip, a
@@ -94,8 +96,9 @@ ditto -c -k --keepParent --sequesterRsrc --rsrc \
   tarball from `python -m build`.
 - `packaging/desktop/`: committed source files for building the double-clickable
   Streamlit desktop app.
-- `release_assets/`: downloadable release artifacts for end users, such as
-  example-data zips and final app zips.
+- `release_assets/`: the tracked example-data archive that the release
+  workflow attaches to GitHub Releases. Generated application ZIPs exist only
+  as workflow artifacts and GitHub Release assets.
 
 ## User Workflow
 
