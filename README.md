@@ -1,5 +1,15 @@
 # ASWIFT
 
+<p align="center">
+  <a href="https://pypi.org/project/aswift/">
+    <img src="https://raw.githubusercontent.com/Soh-Lab/aswift/main/docs/assets/aswift-logo-banner.png" alt="ASWIFT: automated square-wave voltammetry signal fitting" width="640">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/aswift/"><strong>View ASWIFT on PyPI</strong></a>
+</p>
+
 ASWIFT fits square-wave voltammetry (SWV) traces and extracts peak signal,
 background, peak voltage, and full-prominence peak width. Use the no-code
 ASWIFT Viewer for interactive analysis, or install the Python package to build
