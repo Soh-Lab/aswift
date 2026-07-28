@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-27
+
+### Added
+- Machine-readable citation metadata and the bioRxiv preprint citation.
+- Self-contained example notebooks that download and extract the versioned
+  GitHub Release example-data archive when it is not available locally.
+
+### Changed
+- Pin README images and example-data links to the `v1.0.2` release.
+
 ## [1.0.1] - 2026-07-15
 
 ### Fixed

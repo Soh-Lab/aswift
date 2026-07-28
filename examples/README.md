@@ -37,17 +37,19 @@ format first. Notebook 03 shows how to point ASWIFT at a folder of `.pssession`
 files and automatically convert them into the same array-per-trace dataframe and
 fit-results JSON.
 
-## Public Data Suggestions
+## Public Example Data
 
-Each notebook has a `DATA_URL`, `CSV_ZIP_URL`, or `PSSESSION_ZIP_URL` placeholder.
-Good places to host freely downloadable example data:
+The notebooks use the public
+[`example_data.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/example_data.zip)
+archive. Each notebook checks for its required extracted file or folder and,
+when it is missing, extracts the repository's bundled archive or downloads and
+unzips it automatically when the notebook is being run on its own.
 
-- GitHub Releases: easiest for small zipped demo datasets tied to package tags.
-- Zenodo: good for citable research data and DOI-backed releases.
-- OSF or Figshare: good for larger public experimental datasets.
-
-For a PyPI package, keep larger data files and notebooks out of the importable
-package. Link to them from the README and notebooks instead.
+- Notebook 01 uses `simple_csv_example/250hz-1.csv`.
+- Notebook 02 uses
+  `structured_csv_example/dox_invitro_shouldering_structured.csv` and fits
+  channels 0–3 at 10 Hz and 200 Hz.
+- Notebook 03 uses the `pssession_example` folder.
 
 ## Optional Streamlit Viewer
 

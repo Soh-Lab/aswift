@@ -33,11 +33,13 @@ ASWIFT publishes four distinct artifact types:
   signing before presenting the desktop applications as fully trusted public
   downloads. macOS distribution should also be notarized.
 
-## Prepare version 1.0.0
+## Prepare a release
 
-1. Update `version` in `pyproject.toml` to `1.0.0`.
+In the steps below, replace `X.Y.Z` with the release version.
+
+1. Update `version` in `pyproject.toml` to `X.Y.Z`.
 2. Move completed changelog entries from `Unreleased` to
-   `[1.0.0] - YYYY-MM-DD`.
+   `[X.Y.Z] - YYYY-MM-DD`.
 3. Run the test and package checks:
 
    ```bash
@@ -54,11 +56,11 @@ ASWIFT publishes four distinct artifact types:
    metadata, README, and installation. TestPyPI accounts are separate from
    PyPI accounts.
 6. Confirm that the approved `release_assets/example_data.zip` archive is
-   tracked by Git and that the README download link targets the `v1.0.0`
+   tracked by Git and that the README download link targets the `vX.Y.Z`
    release asset.
 7. Commit the version, changelog, and URL updates; merge them to `main`; then
-   create and push the `v1.0.0` tag.
-8. Publish the GitHub release from `v1.0.0`. The desktop workflow will build,
+   create and push the `vX.Y.Z` tag.
+8. Publish the GitHub release from `vX.Y.Z`. The desktop workflow will build,
    smoke-test, zip, and attach all three native applications plus the tracked
    example-data archive.
 9. Run the `Publish to PyPI` workflow with the existing release tag. The
