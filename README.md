@@ -61,7 +61,7 @@ Example notebooks for SWV fitting, CSV workflows, and PalmSens data are in the
 
 ## Using the ASWIFT Viewer
 
-![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.1/docs/assets/aswift-viewer-overview.png)
+![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.2/docs/assets/aswift-viewer-overview.png)
 
 The viewer displays the selected voltammogram and its fitted background and
 peak, a table of values extracted from that fit, and a trend plot across the
@@ -72,7 +72,7 @@ full dataset.
 Choose an input source in the sidebar, then upload one or more SWV data files
 or enter the path to a directory containing a PalmSens dataset. Download
 correctly formatted sample files from the
-[`v1.0.1 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.1/example_data.zip).
+[`v1.0.2 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/example_data.zip).
 
 ASWIFT supports three input formats:
 
@@ -233,6 +233,17 @@ The maintainer checklist for publishing GitHub and PyPI releases is in
 
 Please [open a GitHub issue](https://github.com/Soh-Lab/aswift/issues) for bug
 reports, questions, feedback, or feature requests.
+
+## Citation
+
+If you use ASWIFT in your research, please cite:
+
+> Yates, M., Ji, J., Yee, S., & Soh, H. T. (2026). Robust Regularization
+> Enables Automated, Real-Time Square-Wave Voltammetry Signal Quantification.
+> *bioRxiv*. [https://doi.org/10.64898/2026.07.25.740173](https://doi.org/10.64898/2026.07.25.740173)
+
+Machine-readable citation metadata is available in
+[`CITATION.cff`](https://github.com/Soh-Lab/aswift/blob/main/CITATION.cff).
 
 ## Acknowledgments
 
