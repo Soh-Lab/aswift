@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- Add an input control that multiplies raw current by -1 before fitting.
+- Track, plot, and export baseline-subtracted full-prominence peak area.
+- Add the giraffe ASWIFT banner to the README used for the PyPI project page.
+
+### Fixed
+- Keep live PalmSens folder, channel, frequency, sample, and trend selections
+  synchronized with fit and trend plots as new files arrive.
+
 ## [1.0.2] - 2026-07-27
 
 ### Added

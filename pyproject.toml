@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aswift"
-version = "1.0.2"
+version = "1.0.3"
 license = "MIT"
 description = "ASWIFT peak fitting utilities for square-wave voltammetry"
 keywords = ["electrochemistry", "square-wave voltammetry", "peak fitting", "SWV"]

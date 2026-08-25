@@ -135,6 +135,61 @@ def full_width_prominence(volts, signal, peak_idx: int) -> float:
     return float(abs(volts[right_idx] - volts[left_idx]))
 
 
+def full_prominence_peak_area(volts, smoothed_signal, baseline, peak_idx: int) -> float:
+    """Integrate smoothed signal minus baseline over full-prominence bounds.
+
+    The prominence boundaries are calculated at ``rel_height=1`` on the
+    baseline-subtracted smoothed signal. Fractional boundary positions returned
+    by SciPy are interpolated before trapezoidal integration, so the result is
+    insensitive to voltage sweep direction.
+    """
+    volts = np.asarray(volts, dtype=float)
+    smoothed_signal = np.asarray(smoothed_signal, dtype=float)
+    baseline = np.asarray(baseline, dtype=float)
+    peak_idx = int(peak_idx)
+    if (
+        volts.ndim != 1
+        or smoothed_signal.shape != volts.shape
+        or baseline.shape != volts.shape
+        or peak_idx < 0
+        or peak_idx >= volts.size
+        or not np.isfinite(smoothed_signal[peak_idx])
+    ):
+        return np.nan
+
+    finite = np.isfinite(volts) & np.isfinite(smoothed_signal) & np.isfinite(baseline)
+    if finite.sum() < 3 or not finite[peak_idx]:
+        return np.nan
+
+    finite_indices = np.flatnonzero(finite)
+    if not np.array_equal(finite_indices, np.arange(finite_indices[0], finite_indices[-1] + 1)):
+        return np.nan
+    residual = smoothed_signal - baseline
+    local_signal = residual[finite]
+    local_peak = peak_idx - int(finite_indices[0])
+    candidate_peaks, _ = find_peaks(local_signal)
+    if candidate_peaks.size == 0:
+        return np.nan
+    if local_peak not in candidate_peaks:
+        local_peak = int(candidate_peaks[np.argmin(np.abs(candidate_peaks - local_peak))])
+    with warnings.catch_warnings(record=False):
+        warnings.simplefilter("ignore", PeakPropertyWarning)
+        widths = peak_widths(local_signal, [local_peak], rel_height=1.0)
+    if widths[0][0] <= 0:
+        return np.nan
+
+    left_pos = float(widths[2][0]) + float(finite_indices[0])
+    right_pos = float(widths[3][0]) + float(finite_indices[0])
+    interior = np.arange(math.ceil(left_pos), math.floor(right_pos) + 1, dtype=float)
+    sample_positions = np.unique(np.concatenate(([left_pos], interior, [right_pos])))
+    index_positions = np.arange(volts.size, dtype=float)
+    area_x = np.interp(sample_positions, index_positions, volts)
+    area_y = np.interp(sample_positions, index_positions, residual)
+    if area_x.size < 2:
+        return np.nan
+    return float(abs(np.trapezoid(area_y, area_x)))
+
+
 # noinspection PyPep8Naming
 def make_smoother_D2(size: int):
     """Create a second-derivative Tikhonov smoother.
@@ -640,6 +695,12 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
         fw_prominence=full_width_prominence(volts, peak_profile, peak_idx),
         peak_profile=peak_profile,
         background_profile=background,
+        full_prominence_peak_area=full_prominence_peak_area(
+            volts,
+            smooth_current,
+            background,
+            peak_idx,
+        ),
         params={"settings": settings, "peak_window": peak_window},
     )
 
@@ -706,6 +767,12 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
         fw_prominence=full_width_prominence(volts, polynomial_fit, peak_idx),
         peak_profile=peak_profile,
         background_profile=background_profile,
+        full_prominence_peak_area=full_prominence_peak_area(
+            volts,
+            polynomial_fit,
+            background_profile,
+            peak_idx,
+        ),
         params={
             "polynomial_coeffs": polynomial_coeffs,
             "baseline_coeffs": baseline_coeffs,

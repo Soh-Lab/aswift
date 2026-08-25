@@ -11,7 +11,8 @@
 </p>
 
 ASWIFT fits square-wave voltammetry (SWV) traces and extracts peak signal,
-background, peak voltage, and full-prominence peak width. Use the no-code
+background, peak voltage, full-prominence peak width, and baseline-subtracted
+full-prominence peak area. Use the no-code
 ASWIFT Viewer for interactive analysis, or install the Python package to build
 ASWIFT into a custom workflow.
 
@@ -127,10 +128,14 @@ Use the sidebar controls to choose what appears in the fit and trend plots:
 - **Normalize:** Normalize peak heights to the average over a selected
   reference range. Normalization is calculated independently for every
   subfolder, method, frequency, and channel.
+- **Invert current:** Multiply raw current values by -1 before fitting. This is
+  useful for positive-to-negative SWV sweeps whose peaks otherwise point in the
+  opposite direction from the fitting model.
 
 The **Trend metric** menu switches the time or measurement series among peak
-height, peak voltage, and full-prominence peak width when those values are
-available. Use the plot legend and toolbar to explore individual series.
+height, peak voltage, full-prominence peak width, and full-prominence peak area
+when those values are available. Use the plot legend and toolbar to explore
+individual series.
 
 Select **Download results CSV** at the bottom of the sidebar to export raw and
 normalized results with their associated metadata.
@@ -160,6 +165,8 @@ The returned `FitResult` contains:
 - `peak_background`: background current at the peak
 - `peak_voltage`: voltage at the peak maximum
 - `fw_prominence`: full-prominence peak width
+- `full_prominence_peak_area`: integral of the smoothed signal minus the fitted
+  baseline across the full-prominence peak bounds
 - `peak_profile`: fitted peak-only profile
 - `background_profile`: fitted background profile
 - `fitted_current`: combined peak and background profiles

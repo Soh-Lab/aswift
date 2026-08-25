@@ -128,9 +128,33 @@ def test_core_fitting_methods_fit_synthetic_trace() -> None:
         assert np.isfinite(result.peak_signal)
         assert np.isfinite(result.fw_prominence)
         assert result.fw_prominence > 0
+        assert np.isfinite(result.full_prominence_peak_area)
+        assert result.full_prominence_peak_area > 0
         assert 0.25 < result.peak_signal < 0.6
         assert -0.25 < result.peak_voltage < -0.15
         assert result.fitted_current.shape == volts.shape
+
+
+def test_full_prominence_peak_area_is_sweep_direction_independent() -> None:
+    """Verify full-prominence integration uses the baseline-subtracted smooth fit."""
+    from aswift.peak_extraction.extract_peaks import full_prominence_peak_area
+
+    volts = np.linspace(-0.4, 0.0, 401)
+    baseline = 1.0 + 0.4 * volts
+    peak = 0.5 * np.exp(-0.5 * ((volts + 0.2) / 0.035) ** 2)
+    smooth = baseline + peak
+    peak_idx = int(np.argmax(peak))
+
+    forward = full_prominence_peak_area(volts, smooth, baseline, peak_idx)
+    reverse = full_prominence_peak_area(
+        volts[::-1],
+        smooth[::-1],
+        baseline[::-1],
+        len(volts) - peak_idx - 1,
+    )
+
+    assert forward == pytest.approx(np.trapezoid(peak, volts), rel=1e-4)
+    assert reverse == pytest.approx(forward)
 
 
 def test_dataframe_fitting_builds_signal_table() -> None:
@@ -146,6 +170,8 @@ def test_dataframe_fitting_builds_signal_table() -> None:
     assert results["peak"].between(0.2, 0.7).all()
     assert "fw_prominence" in results.columns
     assert results["fw_prominence"].notna().all()
+    assert "full_prominence_peak_area" in results.columns
+    assert results["full_prominence_peak_area"].notna().all()
 
     signal_table = results_to_signal_table(
         results,
@@ -724,6 +750,82 @@ def test_viewer_worker_configuration_helpers(monkeypatch) -> None:
     assert viewer._default_worker_count() == 1
 
 
+def test_viewer_current_inversion_is_applied_before_fitting(monkeypatch) -> None:
+    """Verify inversion transforms raw current without mutating input data."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    traces = pd.DataFrame(
+        {
+            "voltage": [[-0.2, -0.1, 0.0]],
+            "current": [[1.0, -2.0, 3.0]],
+            "channel": [0],
+        }
+    )
+    captured = {}
+
+    def fake_fit_dataframe(df, **_kwargs):
+        captured["traces"] = df.copy()
+        return pd.DataFrame()
+
+    monkeypatch.setattr(viewer, "fit_dataframe", fake_fit_dataframe)
+
+    viewer._fit_trace_dataframe(traces, method="aswift", n_workers=1, invert=True)
+
+    assert traces.iloc[0]["current"] == [1.0, -2.0, 3.0]
+    assert captured["traces"].iloc[0]["current"] == pytest.approx([-1.0, 2.0, -3.0])
+    assert bool(captured["traces"].iloc[0]["inverted"])
+
+
+def test_viewer_inversion_partitions_result_caches() -> None:
+    """Verify normal and inverted inputs cannot reuse each other's fit cache."""
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    uploads = (("trace.csv", b"voltage,current\n0,1\n"),)
+    normal = viewer._upload_cache_key(uploads, "aswift", 1, "Uploaded order", False)
+    inverted = viewer._upload_cache_key(uploads, "aswift", 1, "Uploaded order", True)
+
+    assert normal != inverted
+
+
+def test_live_selector_keeps_selected_value_when_options_grow(monkeypatch) -> None:
+    """Verify a live update cannot remap a selected channel by option index."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    import aswift.analysis.structured_results_viewer as viewer
+
+    class Sidebar:
+        @staticmethod
+        def selectbox(_label, _options, *, key):
+            return viewer.st.session_state[key]
+
+    monkeypatch.setattr(viewer.st, "session_state", {viewer.CHANNEL_SELECTION_KEY: 3})
+    monkeypatch.setattr(viewer.st, "sidebar", Sidebar())
+
+    initial = pd.DataFrame({"channel": [2, 3]})
+    updated = pd.DataFrame({"channel": [1, 2, 3]})
+
+    assert viewer._select_global_value("Channel", initial, "channel") == 3
+    assert viewer._select_global_value("Channel", updated, "channel") == 3
+
+
+def test_live_plot_revision_changes_with_new_results() -> None:
+    """Verify new live rows force Plotly charts to refresh their mounted data."""
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    from aswift.analysis.structured_results_viewer import _plot_revision
+
+    initial = pd.DataFrame({"file": ["one.pssession"], "channel": [0], "peak": [1.0]})
+    updated = pd.DataFrame(
+        {"file": ["one.pssession", "two.pssession"], "channel": [0, 0], "peak": [1.0, 1.2]}
+    )
+
+    columns = ("file", "channel", "peak")
+    assert _plot_revision(initial, columns) != _plot_revision(updated, columns)
+
+
 def test_process_backend_matches_single_worker_results() -> None:
     """Verify process backend matches single worker results."""
     df = synthetic_trace_dataframe().head(4)
@@ -930,6 +1032,7 @@ def test_viewer_trend_and_filter_helpers() -> None:
             "norm_signal": [1.0],
             "peak_voltage": [-0.2],
             "fw_prominence": [0.05],
+            "full_prominence_peak_area": [0.012],
         }
     )
 
@@ -937,6 +1040,7 @@ def test_viewer_trend_and_filter_helpers() -> None:
         "Peak height": "peak",
         "Peak voltage (V)": "peak_voltage",
         "Peak width (mV)": "fw_prominence",
+        "Full-prominence peak area": "full_prominence_peak_area",
     }
     assert _trend_metric_options(metric_results, normalize=True)["Normalized peak height"] == "norm_signal"
 
@@ -986,7 +1090,8 @@ def test_signal_trend_legend_toggles_individual_channels(monkeypatch) -> None:
 
     monkeypatch.setattr(viewer.st, "subheader", lambda *args, **kwargs: None)
     monkeypatch.setattr(viewer.st, "columns", lambda *args, **kwargs: [nullcontext(), nullcontext()])
-    monkeypatch.setattr(viewer.st, "selectbox", lambda label, options: options[0])
+    monkeypatch.setattr(viewer.st, "session_state", {})
+    monkeypatch.setattr(viewer.st, "selectbox", lambda label, options, **kwargs: options[0])
     monkeypatch.setattr(viewer.st, "plotly_chart", lambda figure, **kwargs: captured.setdefault("figure", figure))
 
     viewer._interactive_signal_trend(results, selected_hz=250, normalize=False)
