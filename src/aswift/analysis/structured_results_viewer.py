@@ -1708,7 +1708,7 @@ def _run_app() -> None:
         )
     method = input_section.selectbox("Fit method", ["aswift", "poly_linear"])
     invert = input_section.checkbox(
-        "Invert current (multiply by -1)",
+        "Invert current",
         help="Invert raw current values before fitting, for example for positive-to-negative SWV sweeps.",
     )
     max_workers = _max_worker_count()
