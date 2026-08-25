@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-08-25
+
 ### Added
 - Add an input control that multiplies raw current by -1 before fitting.
 - Track, plot, and export baseline-subtracted full-prominence peak area.

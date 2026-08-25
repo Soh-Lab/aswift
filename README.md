@@ -25,14 +25,14 @@ viewer; Python is not required.
 ### Install the desktop application
 
 Precompiled applications are available from the
-[`ASWIFT 1.0.2` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.2).
+[`ASWIFT 1.0.3` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.3).
 Download the archive that matches your computer:
 
 | Download | System |
 | --- | --- |
-| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
-| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
-| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
+| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
+| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
+| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
 
 Unzip the archive, then open **ASWIFT Viewer**. Because ASWIFT is distributed
 outside the Apple App Store and Microsoft Store, your operating system may show
@@ -72,7 +72,7 @@ Example notebooks for SWV fitting, CSV workflows, and PalmSens data are in the
 
 ## Using the ASWIFT Viewer
 
-![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.2/docs/assets/aswift-viewer-overview.png)
+![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.3/docs/assets/aswift-viewer-overview.png)
 
 The viewer displays the selected voltammogram and its fitted background and
 peak, a table of values extracted from that fit, and a trend plot across the
@@ -83,7 +83,7 @@ full dataset.
 Choose an input source in the sidebar, then upload one or more SWV data files
 or enter the path to a directory containing a PalmSens dataset. Download
 correctly formatted sample files from the
-[`v1.0.2 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/example_data.zip).
+[`v1.0.3 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/example_data.zip).
 
 ASWIFT supports three input formats:
 
