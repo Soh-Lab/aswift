@@ -40,7 +40,7 @@ fit-results JSON.
 ## Public Example Data
 
 The notebooks use the public
-[`example_data.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/example_data.zip)
+[`example_data.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/example_data.zip)
 archive. Each notebook checks for its required extracted file or folder and,
 when it is missing, extracts the repository's bundled archive or downloads and
 unzips it automatically when the notebook is being run on its own.

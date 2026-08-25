@@ -53,6 +53,11 @@ UNKNOWN_CPU_WORKER_LIMIT = 8
 LOGO_NAME = "aswift-logo.png"
 NORMALIZE_ENABLED_KEY = "aswift_normalize_enabled"
 NORMALIZATION_RANGE_KEY = "aswift_normalization_range"
+FOLDER_SELECTION_KEY = "aswift_selected_folder"
+CHANNEL_SELECTION_KEY = "aswift_selected_channel"
+FREQUENCY_SELECTION_KEY = "aswift_selected_frequency"
+SAMPLE_POSITION_KEY = "aswift_selected_sample_position"
+TREND_METRIC_KEY = "aswift_trend_metric"
 FIT_TRACE_COLORS = {
     "raw": "#0072B2",
     "background": "#E69F00",
@@ -404,8 +409,10 @@ def _fit_trace_dataframe(
     n_workers: int | None,
     _progress: _ProgressProtocol | None = None,
     group_cols: list[str] | None = None,
+    invert: bool = False,
 ) -> pd.DataFrame:
     """Fit a trace dataframe with viewer progress and backend settings."""
+    trace_df = _with_inverted_current(trace_df, invert=invert)
     if _progress is not None:
         _progress.update(0, len(trace_df), "Fitting rows", force=True)
 
@@ -422,6 +429,24 @@ def _fit_trace_dataframe(
     return fit_dataframe(trace_df, **kwargs)
 
 
+def _with_inverted_current(trace_df: pd.DataFrame, *, invert: bool) -> pd.DataFrame:
+    """Copy a trace table, optionally multiplying every current value by -1."""
+    transformed = trace_df.copy()
+    transformed["inverted"] = bool(invert)
+    if not invert:
+        return transformed
+    if "current" not in transformed.columns:
+        raise ValueError("Current inversion requires a 'current' input column.")
+
+    def invert_value(value: Any) -> Any:
+        values = np.asarray(_parse_array_value(value), dtype=float)
+        inverted = -values
+        return float(inverted) if inverted.ndim == 0 else inverted.tolist()
+
+    transformed["current"] = transformed["current"].map(invert_value)
+    return transformed
+
+
 def _prepare_table_or_fit_traces(
     df: pd.DataFrame,
     *,
@@ -429,6 +454,7 @@ def _prepare_table_or_fit_traces(
     method: str = "aswift",
     n_workers: int | None = None,
     _progress: _ProgressProtocol | None = None,
+    invert: bool = False,
 ) -> pd.DataFrame:
     """Load result tables directly or fit trace tables before preparing results."""
     if REQUIRED_FIT_COLUMNS.issubset(df.columns):
@@ -439,6 +465,7 @@ def _prepare_table_or_fit_traces(
             method=method,
             n_workers=n_workers,
             _progress=_progress,
+            invert=invert,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -451,6 +478,7 @@ def _prepare_table_or_fit_traces(
             method=method,
             n_workers=n_workers,
             _progress=_progress,
+            invert=invert,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -466,6 +494,7 @@ def _upload_cache_key(
     method: str,
     n_workers: int | None,
     csv_order: str,
+    invert: bool = False,
 ) -> tuple:
     """Build a stable Streamlit cache key for uploaded files and fit options."""
     return (
@@ -473,6 +502,7 @@ def _upload_cache_key(
         method,
         int(n_workers) if n_workers is not None else None,
         csv_order,
+        bool(invert),
         tuple((name, len(payload), _payload_digest(payload)) for name, payload in uploads),
     )
 
@@ -482,6 +512,7 @@ def _startup_cache_key(
     method: str,
     n_workers: int | None,
     signature: tuple[str, int, int],
+    invert: bool = False,
 ) -> tuple:
     """Build a stable Streamlit cache key for startup files and fit options."""
     return (
@@ -489,6 +520,7 @@ def _startup_cache_key(
         method,
         int(n_workers) if n_workers is not None else None,
         signature,
+        bool(invert),
         str(Path(path_text).expanduser()),
     )
 
@@ -503,6 +535,7 @@ def _load_results_from_upload_impl(
     method: str,
     n_workers: int | None,
     csv_order: str,
+    invert: bool = False,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit uploaded JSON or CSV files."""
@@ -520,6 +553,7 @@ def _load_results_from_upload_impl(
                 method=method,
                 n_workers=n_workers,
                 _progress=_progress,
+                invert=invert,
             )
         elif suffix == ".csv":
             df = _read_csv_payload_for_viewer(payload)
@@ -541,6 +575,7 @@ def _load_results_from_upload_impl(
             method=method,
             n_workers=n_workers,
             _progress=_progress,
+            invert=invert,
         )
         return _prepare_results(results, source_kind=SIMPLE_CSV_SOURCE)
 
@@ -576,6 +611,7 @@ def _load_results_from_upload_impl(
             method=method,
             n_workers=n_workers,
             _progress=_progress,
+            invert=invert,
         )
         frames.append(_prepare_results(results, source_kind=SIMPLE_CSV_SOURCE))
     if not frames:
@@ -592,6 +628,7 @@ def _load_results_from_upload(
     method: str,
     n_workers: int | None,
     csv_order: str,
+    invert: bool = False,
 ) -> pd.DataFrame:
     """Cached wrapper for uploaded viewer inputs."""
     return _load_results_from_upload_impl(
@@ -599,6 +636,7 @@ def _load_results_from_upload(
         method,
         n_workers,
         csv_order,
+        invert,
     )
 
 
@@ -618,6 +656,7 @@ def _load_results_from_startup_path_impl(
     method: str,
     n_workers: int | None,
     signature: tuple[str, int, int],
+    invert: bool = False,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit the path supplied to the viewer at startup."""
@@ -633,6 +672,7 @@ def _load_results_from_startup_path_impl(
         method=method,
         n_workers=n_workers,
         _progress=_progress,
+        invert=invert,
     )
 
 
@@ -642,6 +682,7 @@ def _load_results_from_startup_path(
     method: str,
     n_workers: int | None,
     signature: tuple[str, int, int],
+    invert: bool = False,
 ) -> pd.DataFrame:
     """Cached wrapper for startup path loading."""
     return _load_results_from_startup_path_impl(
@@ -649,6 +690,7 @@ def _load_results_from_startup_path(
         method,
         n_workers,
         signature,
+        invert,
     )
 
 
@@ -665,9 +707,9 @@ def _pssession_file_key(path: Path) -> tuple[str, int, int]:
     return str(path), stat.st_mtime_ns, stat.st_size
 
 
-def _live_folder_signature_key(folder: Path, method: str) -> str:
+def _live_folder_signature_key(folder: Path, method: str, invert: bool = False) -> str:
     """Return the Streamlit session-state key for a watched PalmSens folder."""
-    return f"pssession_live_signature::{folder.resolve()}::{method}"
+    return f"pssession_live_signature::{folder.resolve()}::{method}::invert={int(invert)}"
 
 
 def _current_pssession_files(folder: Path) -> list[Path]:
@@ -681,19 +723,19 @@ def _pssession_folder_signature(folder: Path) -> tuple[tuple[str, int, int], ...
     return tuple(_pssession_file_key(path) for path in _current_pssession_files(folder))
 
 
-def _live_folder_has_changes(folder_text: str, method: str) -> bool:
+def _live_folder_has_changes(folder_text: str, method: str, invert: bool = False) -> bool:
     """Return whether the watched PalmSens folder has changed since the last load."""
     folder = Path(folder_text).expanduser()
     if not folder.exists() or not folder.is_dir():
         return True
     signature = _pssession_folder_signature(folder)
-    return st.session_state.get(_live_folder_signature_key(folder, method)) != signature
+    return st.session_state.get(_live_folder_signature_key(folder, method, invert)) != signature
 
 
 @st.fragment(run_every=2.0)
-def _watch_live_pssession_folder(folder_text: str, method: str) -> None:
+def _watch_live_pssession_folder(folder_text: str, method: str, invert: bool = False) -> None:
     """Trigger a Streamlit rerun when live PalmSens folder contents change."""
-    if _live_folder_has_changes(folder_text, method):
+    if _live_folder_has_changes(folder_text, method, invert):
         st.rerun(scope="app")
 
 
@@ -714,6 +756,7 @@ def _fit_pssession_dataframes(
     *,
     method: str,
     n_workers: int | None,
+    invert: bool = False,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Fit trace dataframes loaded from one or more PalmSens files."""
@@ -728,6 +771,7 @@ def _fit_pssession_dataframes(
         n_workers=n_workers,
         group_cols=group_cols,
         _progress=_progress,
+        invert=invert,
     )
 
 
@@ -735,6 +779,7 @@ def _load_results_from_live_pssession_folder(
     folder_text: str,
     method: str,
     n_workers: int | None,
+    invert: bool = False,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Incrementally load, fit, cache, and export live PalmSens folder results."""
@@ -744,7 +789,7 @@ def _load_results_from_live_pssession_folder(
     if not folder.is_dir():
         raise NotADirectoryError(folder)
 
-    cache_key = f"pssession_live_cache::{folder.resolve()}::{method}"
+    cache_key = f"pssession_live_cache::{folder.resolve()}::{method}::invert={int(invert)}"
     cache = st.session_state.setdefault(cache_key, {})
     files = _current_pssession_files(folder)
     current_signature = tuple(_pssession_file_key(path) for path in files)
@@ -784,6 +829,7 @@ def _load_results_from_live_pssession_folder(
                 [frame for _, _, frame in pending],
                 method=method,
                 n_workers=n_workers,
+                invert=invert,
                 _progress=_progress,
             )
         except Exception as exc:
@@ -814,7 +860,7 @@ def _load_results_from_live_pssession_folder(
 
     results = _normalize_result_time(order_results_dataframe(pd.concat(frames, ignore_index=True)))
     results.to_json(folder / RESULTS_JSON_NAME, orient="records", date_format="iso", indent=2)
-    st.session_state[_live_folder_signature_key(folder, method)] = current_signature
+    st.session_state[_live_folder_signature_key(folder, method, invert)] = current_signature
     return _prepare_results(results)
 
 
@@ -847,6 +893,7 @@ def _failed_pssession_file_result(path: Path, method: str, exc: Exception) -> pd
             "peak_voltage": np.nan,
             "peak_index": -1,
             "fw_prominence": np.nan,
+            "full_prominence_peak_area": np.nan,
             "voltage": [],
             "current": [],
             "peak_profile": [],
@@ -882,6 +929,7 @@ def _result_summary(row: pd.Series) -> pd.DataFrame:
         "background",
         "peak_voltage",
         "fw_prominence",
+        "full_prominence_peak_area",
         "time",
         "timestamp",
         "hz",
@@ -966,12 +1014,18 @@ def _select_sample_position(row_count: int) -> int:
         st.sidebar.caption("Sample index: 0")
         return 0
 
+    current = st.session_state.get(SAMPLE_POSITION_KEY, 0)
+    try:
+        current = int(current)
+    except (TypeError, ValueError):
+        current = 0
+    st.session_state[SAMPLE_POSITION_KEY] = min(max(current, 0), row_count - 1)
     return int(
         st.sidebar.slider(
             "Sample index",
             min_value=0,
             max_value=row_count - 1,
-            value=0,
+            key=SAMPLE_POSITION_KEY,
             label_visibility="collapsed",
         )
     )
@@ -1087,7 +1141,13 @@ def _select_global_value(label: str, data: pd.DataFrame, column: str) -> Any:
     if not values:
         return None
 
-    return st.sidebar.selectbox(label, values)
+    state_key = {
+        "channel": CHANNEL_SELECTION_KEY,
+        "hz": FREQUENCY_SELECTION_KEY,
+    }.get(column, f"aswift_selected_{column}")
+    if st.session_state.get(state_key) not in values:
+        st.session_state[state_key] = values[0]
+    return st.sidebar.selectbox(label, values, key=state_key)
 
 
 def _select_folder_label(data: pd.DataFrame) -> str | None:
@@ -1099,7 +1159,10 @@ def _select_folder_label(data: pd.DataFrame) -> str | None:
     if not labels:
         return None
 
-    selected = st.sidebar.selectbox("Subfolder", ["All folders", *labels])
+    options = ["All folders", *labels]
+    if st.session_state.get(FOLDER_SELECTION_KEY) not in options:
+        st.session_state[FOLDER_SELECTION_KEY] = "All folders"
+    selected = st.sidebar.selectbox("Subfolder", options, key=FOLDER_SELECTION_KEY)
     return None if selected == "All folders" else str(selected)
 
 
@@ -1366,7 +1429,23 @@ def _trend_metric_options(results: pd.DataFrame, *, normalize: bool) -> dict[str
         options["Peak voltage (V)"] = "peak_voltage"
     if "fw_prominence" in results.columns:
         options["Peak width (mV)"] = "fw_prominence"
+    if "full_prominence_peak_area" in results.columns:
+        options["Full-prominence peak area"] = "full_prominence_peak_area"
     return options
+
+
+def _plot_revision(data: pd.DataFrame, columns: tuple[str, ...]) -> str:
+    """Return a short content revision for forcing live Plotly refreshes."""
+    present = [column for column in columns if column in data.columns]
+    if not present or data.empty:
+        payload = f"rows={len(data)}"
+    else:
+        records = [
+            tuple(repr(value) for value in row)
+            for row in data[present].itertuples(index=False, name=None)
+        ]
+        payload = repr((present, records))
+    return hashlib.blake2b(payload.encode("utf-8"), digest_size=10).hexdigest()
 
 
 def _trend_x_column(data: pd.DataFrame) -> tuple[pd.DataFrame, str, str, str]:
@@ -1505,7 +1584,10 @@ def _interactive_signal_trend(
 
     metric_col_left, _ = st.columns([1, 2])
     with metric_col_left:
-        metric_label = st.selectbox("Trend metric", list(metric_options))
+        metric_labels = list(metric_options)
+        if st.session_state.get(TREND_METRIC_KEY) not in metric_labels:
+            st.session_state[TREND_METRIC_KEY] = metric_labels[0]
+        metric_label = st.selectbox("Trend metric", metric_labels, key=TREND_METRIC_KEY)
     metric_col = metric_options[metric_label]
 
     trend_scope = results.copy()
@@ -1585,6 +1667,23 @@ def _interactive_signal_trend(
     }
     st.plotly_chart(
         fig,
+        key=(
+            "aswift-trend-"
+            + _plot_revision(
+                chart_data,
+                (
+                    "source_path",
+                    "file",
+                    "relative_folder",
+                    "channel",
+                    "hz",
+                    "num",
+                    "timestamp",
+                    "time",
+                    metric_col,
+                ),
+            )
+        ),
         width="stretch",
         config=chart_config,
     )
@@ -1608,6 +1707,10 @@ def _run_app() -> None:
             ["Upload JSON/CSV", "PalmSens .pssession"],
         )
     method = input_section.selectbox("Fit method", ["aswift", "poly_linear"])
+    invert = input_section.checkbox(
+        "Invert current",
+        help="Invert raw current values before fitting, for example for positive-to-negative SWV sweeps.",
+    )
     max_workers = _max_worker_count()
     n_workers = input_section.number_input(
         "Workers",
@@ -1622,7 +1725,7 @@ def _run_app() -> None:
     try:
         if source_kind == "Startup JSON/CSV":
             startup_signature = _file_signature(startup_path)
-            cache_key = _startup_cache_key(startup_path, method, int(n_workers), startup_signature)
+            cache_key = _startup_cache_key(startup_path, method, int(n_workers), startup_signature, invert)
             results = st.session_state.get(cache_key)
             if results is None:
                 progress = _StreamlitProgress()
@@ -1631,6 +1734,7 @@ def _run_app() -> None:
                     method,
                     int(n_workers),
                     startup_signature,
+                    invert,
                     _progress=progress,
                 )
                 st.session_state[cache_key] = results
@@ -1644,7 +1748,7 @@ def _run_app() -> None:
                 st.info("Upload fit results, structured trace CSVs, or simple voltage/current CSVs to begin.")
                 st.stop()
             uploads = tuple((uploaded.name, uploaded.getvalue()) for uploaded in uploaded_files)
-            cache_key = _upload_cache_key(uploads, method, int(n_workers), upload_order)
+            cache_key = _upload_cache_key(uploads, method, int(n_workers), upload_order, invert)
             results = st.session_state.get(cache_key)
             if results is None:
                 progress = _StreamlitProgress()
@@ -1653,6 +1757,7 @@ def _run_app() -> None:
                     method,
                     int(n_workers),
                     upload_order,
+                    invert,
                     _progress=progress,
                 )
                 st.session_state[cache_key] = results
@@ -1671,14 +1776,15 @@ def _run_app() -> None:
                     st.error(f"Path is not a folder: {folder}")
                     st.stop()
                 input_section.caption(f"Selected: {folder.name}")
-                progress = _StreamlitProgress() if _live_folder_has_changes(folder_text, method) else None
+                progress = _StreamlitProgress() if _live_folder_has_changes(folder_text, method, invert) else None
                 results = _load_results_from_live_pssession_folder(
                     folder_text,
                     method,
                     int(n_workers),
+                    invert,
                     _progress=progress,
                 )
-                _watch_live_pssession_folder(folder_text, method)
+                _watch_live_pssession_folder(folder_text, method, invert)
             else:
                 st.info("Enter a folder path containing .pssession or .pssession.mp3 files to begin.")
                 st.stop()
@@ -1766,6 +1872,28 @@ def _run_app() -> None:
         )
         st.plotly_chart(
             fig,
+            key=(
+                "aswift-fit-"
+                + _plot_revision(
+                    filtered,
+                    (
+                        "source_path",
+                        "file",
+                        "relative_folder",
+                        "channel",
+                        "hz",
+                        "num",
+                        "timestamp",
+                        "time",
+                        "method",
+                        "success",
+                        "peak",
+                        "background",
+                        "peak_voltage",
+                        "full_prominence_peak_area",
+                    ),
+                )
+            ),
             width="stretch",
             config={
                 "displaylogo": False,

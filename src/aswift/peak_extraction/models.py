@@ -71,6 +71,9 @@ class FitResult:
         peak_index: Integer index of the detected peak maximum, or ``-1`` for
             a failed fit.
         fw_prominence: Full-prominence peak width in voltage units.
+        full_prominence_peak_area: Integral of the smoothed signal minus its
+            fitted baseline across the full-prominence peak bounds, in
+            current-times-voltage units.
         peak_profile: Full-length fitted peak-only profile. ASWIFT stores
             ``NaN`` outside the fitted peak window.
         background_profile: Full-length fitted background profile.
@@ -89,6 +92,7 @@ class FitResult:
     fw_prominence: float
     peak_profile: NDArray[np.float64]
     background_profile: NDArray[np.float64]
+    full_prominence_peak_area: float = np.nan
     params: dict[str, Any] = field(default_factory=dict)
     success: bool = True
     error: str | None = None
@@ -118,6 +122,7 @@ class FitResult:
             "peak_voltage": self.peak_voltage,
             "peak_index": self.peak_index,
             "fw_prominence": self.fw_prominence,
+            "full_prominence_peak_area": self.full_prominence_peak_area,
             "popt": self.popt.tolist(),
             "bg_idx": self.bg_idx,
         }
@@ -169,6 +174,7 @@ def failed_fit_result(
         fw_prominence=np.nan,
         peak_profile=empty.copy(),
         background_profile=empty.copy(),
+        full_prominence_peak_area=np.nan,
         success=False,
         error=str(error),
     )

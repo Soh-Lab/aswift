@@ -11,7 +11,8 @@
 </p>
 
 ASWIFT fits square-wave voltammetry (SWV) traces and extracts peak signal,
-background, peak voltage, and full-prominence peak width. Use the no-code
+background, peak voltage, full-prominence peak width, and baseline-subtracted
+full-prominence peak area. Use the no-code
 ASWIFT Viewer for interactive analysis, or install the Python package to build
 ASWIFT into a custom workflow.
 
@@ -24,14 +25,14 @@ viewer; Python is not required.
 ### Install the desktop application
 
 Precompiled applications are available from the
-[`ASWIFT 1.0.2` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.2).
+[`ASWIFT 1.0.3` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.3).
 Download the archive that matches your computer:
 
 | Download | System |
 | --- | --- |
-| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
-| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
-| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
+| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
+| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
+| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
 
 Unzip the archive, then open **ASWIFT Viewer**. Because ASWIFT is distributed
 outside the Apple App Store and Microsoft Store, your operating system may show
@@ -71,7 +72,7 @@ Example notebooks for SWV fitting, CSV workflows, and PalmSens data are in the
 
 ## Using the ASWIFT Viewer
 
-![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.2/docs/assets/aswift-viewer-overview.png)
+![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.3/docs/assets/aswift-viewer-overview.png)
 
 The viewer displays the selected voltammogram and its fitted background and
 peak, a table of values extracted from that fit, and a trend plot across the
@@ -82,7 +83,7 @@ full dataset.
 Choose an input source in the sidebar, then upload one or more SWV data files
 or enter the path to a directory containing a PalmSens dataset. Download
 correctly formatted sample files from the
-[`v1.0.2 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.2/example_data.zip).
+[`v1.0.3 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/example_data.zip).
 
 ASWIFT supports three input formats:
 
@@ -127,10 +128,14 @@ Use the sidebar controls to choose what appears in the fit and trend plots:
 - **Normalize:** Normalize peak heights to the average over a selected
   reference range. Normalization is calculated independently for every
   subfolder, method, frequency, and channel.
+- **Invert current:** Multiply raw current values by -1 before fitting. This is
+  useful for positive-to-negative SWV sweeps whose peaks otherwise point in the
+  opposite direction from the fitting model.
 
 The **Trend metric** menu switches the time or measurement series among peak
-height, peak voltage, and full-prominence peak width when those values are
-available. Use the plot legend and toolbar to explore individual series.
+height, peak voltage, full-prominence peak width, and full-prominence peak area
+when those values are available. Use the plot legend and toolbar to explore
+individual series.
 
 Select **Download results CSV** at the bottom of the sidebar to export raw and
 normalized results with their associated metadata.
@@ -160,6 +165,8 @@ The returned `FitResult` contains:
 - `peak_background`: background current at the peak
 - `peak_voltage`: voltage at the peak maximum
 - `fw_prominence`: full-prominence peak width
+- `full_prominence_peak_area`: integral of the smoothed signal minus the fitted
+  baseline across the full-prominence peak bounds
 - `peak_profile`: fitted peak-only profile
 - `background_profile`: fitted background profile
 - `fitted_current`: combined peak and background profiles
