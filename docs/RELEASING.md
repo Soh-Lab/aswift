@@ -38,9 +38,12 @@ ASWIFT publishes four distinct artifact types:
 In the steps below, replace `X.Y.Z` with the release version.
 
 1. Update `version` in `pyproject.toml` to `X.Y.Z`.
-2. Move completed changelog entries from `Unreleased` to
+2. Review `README.md` and `PYPI_README.md` together. Keep the PyPI description
+   free of links back to its own project page, and confirm that its banner and
+   viewer screenshot URLs resolve to the current assets on `main`.
+3. Move completed changelog entries from `Unreleased` to
    `[X.Y.Z] - YYYY-MM-DD`.
-3. Run the test and package checks:
+4. Run the test and package checks:
 
    ```bash
    python -m pytest -q
@@ -48,22 +51,22 @@ In the steps below, replace `X.Y.Z` with the release version.
    python -m twine check --strict dist/*
    ```
 
-4. Test installation from the wheel in a clean environment, including the
+5. Test installation from the wheel in a clean environment, including the
    core package and the optional viewer extra.
-5. Configure a TestPyPI Trusted Publisher with owner `Soh-Lab`, repository
+6. Configure a TestPyPI Trusted Publisher with owner `Soh-Lab`, repository
    `aswift`, workflow filename `publish-testpypi.yml`, and environment
    `testpypi`. Run `Publish to TestPyPI` for the candidate tag and verify its
    metadata, README, and installation. TestPyPI accounts are separate from
    PyPI accounts.
-6. Confirm that the approved `release_assets/example_data.zip` archive is
+7. Confirm that the approved `release_assets/example_data.zip` archive is
    tracked by Git and that the README download link targets the `vX.Y.Z`
    release asset.
-7. Commit the version, changelog, and URL updates; merge them to `main`; then
+8. Commit the version, changelog, and URL updates; merge them to `main`; then
    create and push the `vX.Y.Z` tag.
-8. Publish the GitHub release from `vX.Y.Z`. The desktop workflow will build,
+9. Publish the GitHub release from `vX.Y.Z`. The desktop workflow will build,
    smoke-test, zip, and attach all three native applications plus the tracked
    example-data archive.
-9. Run the `Publish to PyPI` workflow with the existing release tag. The
+10. Run the `Publish to PyPI` workflow with the existing release tag. The
    dedicated Trusted Publishing job uses the GitHub `pypi` environment and
    only the `id-token: write` permission. Confirm the environment approval, if
    configured, only after checking the tag and build job output.
