@@ -72,7 +72,7 @@ Example notebooks for SWV fitting, CSV workflows, and PalmSens data are in the
 
 ## Using the ASWIFT Viewer
 
-![Annotated overview of the ASWIFT Viewer interface](https://raw.githubusercontent.com/Soh-Lab/aswift/v1.0.3/docs/assets/aswift-viewer-overview.png)
+![Annotated overview of the ASWIFT Viewer interface](docs/assets/aswift-viewer-overview.png)
 
 The viewer displays the selected voltammogram and its fitted background and
 peak, a table of values extracted from that fit, and a trend plot across the

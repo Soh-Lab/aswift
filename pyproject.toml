@@ -11,7 +11,7 @@ keywords = ["electrochemistry", "square-wave voltammetry", "peak fitting", "SWV"
 authors = [
     {name = "Max Yates", email = "mlyates@stanford.edu"}
 ]
-readme = "README.md"
+readme = {file = "PYPI_README.md", content-type = "text/markdown"}
 requires-python = ">=3.12"
 classifiers = [
     "Intended Audience :: Science/Research",
