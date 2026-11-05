@@ -18,8 +18,8 @@ authors:
 repository-code: "https://github.com/Soh-Lab/aswift"
 url: "https://github.com/Soh-Lab/aswift"
 license: MIT
-version: 1.0.3
-date-released: 2026-08-25
+version: 1.0.4
+date-released: 2026-11-05
 preferred-citation:
   type: article
   authors:

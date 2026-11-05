@@ -18,3 +18,5 @@ release_assets/*.zip
 .idea/
 *.zip
 !release_assets/example_data.zip
+pdf/
+tmp/

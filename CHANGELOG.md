@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-11-05
+
+### Added
+- Add an optional peak potential range in the Python single-trace and batch APIs
+  and the desktop Input controls. Select the most prominent peak within the
+  inclusive limits and report a failed fit when no eligible peak is found.
+- Add help tooltips for peak potential range and normalization.
+
+### Fixed
+- Replace the normalization range slider with typed start and end indices so
+  ranges such as 0–4 can be entered precisely.
+
+### Changed
+- Document potential-range selection and the need to allow for peak drift.
+- Update the viewer overview image and release download links.
+- Ignore directories named pdf and tmp at any depth.
+
 ## [1.0.3] - 2026-08-25
 
 ### Added

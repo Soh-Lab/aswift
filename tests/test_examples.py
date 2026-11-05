@@ -389,31 +389,30 @@ def test_normalization_controls_preserve_range_when_live_data_grows(monkeypatch)
     import aswift.analysis.structured_results_viewer as viewer
 
     class Sidebar:
-        """Minimal normalization-control stub that records slider defaults."""
-
-        def __init__(self) -> None:
-            self.defaults = []
-
         @staticmethod
-        def checkbox(_label, *, key):
-            """Return the persisted enabled setting."""
+        def checkbox(_label, *, key, help):
+            assert "0–4 uses the first five samples" in help
             assert key == viewer.NORMALIZE_ENABLED_KEY
             return True
 
-        def slider(self, _label, *, min_value, max_value, value):
-            """Record the default and emulate the current widget selection."""
-            assert min_value == 0
-            self.defaults.append((max_value, value))
-            return (1, 2) if len(self.defaults) == 1 else value
+        def columns(self, count):
+            assert count == 2
+            return self, self
+
+        def number_input(self, label, *, min_value, max_value, value, step):
+            assert min_value <= value <= max_value
+            assert step == 1
+            if label == "End index" and max_value == 999:
+                return 4
+            return value
 
     sidebar = Sidebar()
     monkeypatch.setattr(viewer.st, "session_state", {})
     monkeypatch.setattr(viewer.st, "sidebar", sidebar)
 
-    assert viewer._normalization_controls(4) == (True, 1, 2)
-    assert viewer._normalization_controls(5) == (True, 1, 2)
-    assert sidebar.defaults == [(3, (0, 3)), (4, (1, 2))]
-    assert viewer.st.session_state[viewer.NORMALIZATION_RANGE_KEY] == (1, 2)
+    assert viewer._normalization_controls(1000) == (True, 0, 4)
+    assert viewer._normalization_controls(1001) == (True, 0, 4)
+    assert viewer.st.session_state[viewer.NORMALIZATION_RANGE_KEY] == (0, 4)
 
 
 def test_viewer_results_download_hides_internal_columns_and_preserves_norm_signal() -> None:
@@ -1122,3 +1121,17 @@ def test_live_pssession_folder_discovers_nested_files(tmp_path, monkeypatch) -> 
 
     assert top_file in discovered
     assert nested_file in discovered
+
+
+@pytest.mark.parametrize("fit", [aswift_fit, poly_linear_fit])
+def test_expected_potential_range_selects_weaker_peak(fit):
+    volts = np.linspace(-0.5, 0.5, 201)
+    current = np.exp(-((volts + 0.2) / 0.07) ** 2) + 2 * np.exp(-((volts - 0.2) / 0.07) ** 2)
+    assert fit(volts, current).peak_voltage == pytest.approx(0.2, abs=0.03)
+    result = fit(volts, current, expected_potential_range=(-0.24, -0.16))
+    assert result.peak_voltage == pytest.approx(-0.2, abs=0.03)
+    assert result.peak_signal == pytest.approx(result.peak_profile[result.peak_index])
+    with pytest.raises(ValueError, match="No peak found within"):
+        fit(volts, current, expected_potential_range=(0.6, 0.7))
+    with pytest.raises(ValueError, match="lower <= upper"):
+        fit(volts, current, expected_potential_range=(0.1, -0.1))
