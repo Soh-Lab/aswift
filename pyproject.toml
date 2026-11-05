@@ -45,7 +45,9 @@ viewer = [
     "matplotlib>=3.10",
     "pandas>=2.2",
     "plotly>=6.0.0",
-    "pypalmsens>=1.9.0",
+    # Match the SDK/runtime combination verified in the desktop release builds.
+    # PyPalmSens 2.x requires a newer .NET runtime, including on Windows.
+    "pypalmsens==1.11.0",
     # Python.NET 3.1 currently fails to resolve its loader method in the
     # PyInstaller-frozen Windows viewer. Keep the established 3.0 runtime
     # until that upstream frozen-app regression is resolved.
