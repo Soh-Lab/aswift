@@ -2,7 +2,7 @@
 
 This folder contains the tracked example-data archive that GitHub Actions
 attaches to each release. Download the generated desktop applications from the
-[`ASWIFT 1.0.3` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.3);
+[`ASWIFT 1.0.4` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.4);
 the application ZIPs are not committed to this folder. Reusable desktop-app
 packaging files live in `packaging/desktop/`.
 

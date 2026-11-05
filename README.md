@@ -25,14 +25,14 @@ viewer; Python is not required.
 ### Install the desktop application
 
 Precompiled applications are available from the
-[`ASWIFT 1.0.3` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.3).
+[`ASWIFT 1.0.4` GitHub Release](https://github.com/Soh-Lab/aswift/releases/tag/v1.0.4).
 Download the archive that matches your computer:
 
 | Download | System |
 | --- | --- |
-| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
-| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
-| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
+| [`ASWIFT-Viewer-macos-arm64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.4/ASWIFT-Viewer-macos-arm64.zip) | Apple Silicon Mac (M1, M2, M3, M4, or newer) |
+| [`ASWIFT-Viewer-macos-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.4/ASWIFT-Viewer-macos-x64.zip) | Intel-based Mac |
+| [`ASWIFT-Viewer-windows-x64.zip`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.4/ASWIFT-Viewer-windows-x64.zip) | 64-bit Windows |
 
 Unzip the archive, then open **ASWIFT Viewer**. Because ASWIFT is distributed
 outside the Apple App Store and Microsoft Store, your operating system may show
@@ -83,7 +83,7 @@ full dataset.
 Choose an input source in the sidebar, then upload one or more SWV data files
 or enter the path to a directory containing a PalmSens dataset. Download
 correctly formatted sample files from the
-[`v1.0.3 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.3/example_data.zip).
+[`v1.0.4 example-data archive`](https://github.com/Soh-Lab/aswift/releases/download/v1.0.4/example_data.zip).
 
 ASWIFT supports three input formats:
 
@@ -107,6 +107,12 @@ ASWIFT supports three input formats:
 
 If a trace cannot be fit but its raw voltage and current are available, the
 viewer still displays the raw trace for inspection.
+
+### Select a reporter by expected potential
+
+Under **Input**, check **Peak potential range** and type the lower and upper limits in volts. ASWIFT compares local peaks by prominence across the full smoothed trace and selects the most prominent candidate whose potential falls within the limits (inclusive). Choose a range wide enough to accommodate peak drift with binding or changes in the local environment. A trace with no eligible peak is reported as a failed fit. Leave the box unchecked for automatic selection across the full trace. This setting applies when fitting raw traces. Opening saved fit results displays the original fit.
+
+In Python, pass the same limits to a single-trace or batch fit, for example `aswift_fit(volts, current, expected_potential_range=(-0.35, -0.20))` or `fit_dataframe(df, expected_potential_range=(-0.35, -0.20))`.
 
 ### Inspect and process results
 

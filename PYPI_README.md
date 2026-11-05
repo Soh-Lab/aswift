@@ -41,6 +41,14 @@ The viewer loads CSV, JSON, and PalmSens `.pssession` data; fits individual or
 batched voltammograms; visualizes fitted backgrounds and peaks; and exports
 raw and normalized results with their associated metadata.
 
+Under **Input**, enable **Peak potential range** to select the most prominent
+peak within typed lower and upper limits in volts. Leave it unchecked for
+automatic peak selection. Allow enough range for peak drift. A trace with no
+eligible peak is reported as a failed fit.
+
+Use **Normalize** with typed start and end sample indices. Both limits are
+included, so 0–4 uses the first five samples as the reference.
+
 ## Python API
 
 ```python
@@ -58,7 +66,9 @@ ax = plot_fit_result(result)
 The returned `FitResult` includes the peak signal, background, voltage,
 full-prominence width and area, peak profile, background profile, and combined
 fitted current. ASWIFT also provides dataframe and PalmSens helpers for batch
-workflows.
+workflows. Single-trace and batch fitting methods accept
+`expected_potential_range=(-0.35, -0.20)` to restrict peak selection to an
+inclusive potential range in volts.
 
 ## Documentation and support
 

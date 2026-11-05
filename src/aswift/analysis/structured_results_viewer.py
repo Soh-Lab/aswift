@@ -410,6 +410,7 @@ def _fit_trace_dataframe(
     _progress: _ProgressProtocol | None = None,
     group_cols: list[str] | None = None,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Fit a trace dataframe with viewer progress and backend settings."""
     trace_df = _with_inverted_current(trace_df, invert=invert)
@@ -421,6 +422,7 @@ def _fit_trace_dataframe(
         "n_workers": n_workers,
         "parallel_backend": _parallel_backend_for_workers(n_workers),
         "chunksize": FIT_CHUNKSIZE,
+        "expected_potential_range": expected_potential_range,
         "progress_callback": _progress.callback("Fitting rows") if _progress is not None else None,
     }
     if group_cols is not None:
@@ -455,6 +457,7 @@ def _prepare_table_or_fit_traces(
     n_workers: int | None = None,
     _progress: _ProgressProtocol | None = None,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Load result tables directly or fit trace tables before preparing results."""
     if REQUIRED_FIT_COLUMNS.issubset(df.columns):
@@ -466,6 +469,7 @@ def _prepare_table_or_fit_traces(
             n_workers=n_workers,
             _progress=_progress,
             invert=invert,
+            expected_potential_range=expected_potential_range,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -479,6 +483,7 @@ def _prepare_table_or_fit_traces(
             n_workers=n_workers,
             _progress=_progress,
             invert=invert,
+            expected_potential_range=expected_potential_range,
         )
         if source_path is not None:
             output_path = source_path.with_name(f"{source_path.stem}_aswift_fit_results.json")
@@ -495,6 +500,7 @@ def _upload_cache_key(
     n_workers: int | None,
     csv_order: str,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> tuple:
     """Build a stable Streamlit cache key for uploaded files and fit options."""
     return (
@@ -503,6 +509,7 @@ def _upload_cache_key(
         int(n_workers) if n_workers is not None else None,
         csv_order,
         bool(invert),
+        expected_potential_range,
         tuple((name, len(payload), _payload_digest(payload)) for name, payload in uploads),
     )
 
@@ -513,6 +520,7 @@ def _startup_cache_key(
     n_workers: int | None,
     signature: tuple[str, int, int],
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> tuple:
     """Build a stable Streamlit cache key for startup files and fit options."""
     return (
@@ -521,6 +529,7 @@ def _startup_cache_key(
         int(n_workers) if n_workers is not None else None,
         signature,
         bool(invert),
+        expected_potential_range,
         str(Path(path_text).expanduser()),
     )
 
@@ -536,6 +545,7 @@ def _load_results_from_upload_impl(
     n_workers: int | None,
     csv_order: str,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit uploaded JSON or CSV files."""
@@ -554,6 +564,7 @@ def _load_results_from_upload_impl(
                 n_workers=n_workers,
                 _progress=_progress,
                 invert=invert,
+                expected_potential_range=expected_potential_range,
             )
         elif suffix == ".csv":
             df = _read_csv_payload_for_viewer(payload)
@@ -576,6 +587,7 @@ def _load_results_from_upload_impl(
             n_workers=n_workers,
             _progress=_progress,
             invert=invert,
+            expected_potential_range=expected_potential_range,
         )
         return _prepare_results(results, source_kind=SIMPLE_CSV_SOURCE)
 
@@ -612,6 +624,7 @@ def _load_results_from_upload_impl(
             n_workers=n_workers,
             _progress=_progress,
             invert=invert,
+            expected_potential_range=expected_potential_range,
         )
         frames.append(_prepare_results(results, source_kind=SIMPLE_CSV_SOURCE))
     if not frames:
@@ -629,6 +642,7 @@ def _load_results_from_upload(
     n_workers: int | None,
     csv_order: str,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Cached wrapper for uploaded viewer inputs."""
     return _load_results_from_upload_impl(
@@ -637,6 +651,7 @@ def _load_results_from_upload(
         n_workers,
         csv_order,
         invert,
+        expected_potential_range=expected_potential_range,
     )
 
 
@@ -657,6 +672,7 @@ def _load_results_from_startup_path_impl(
     n_workers: int | None,
     signature: tuple[str, int, int],
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Load and optionally fit the path supplied to the viewer at startup."""
@@ -673,6 +689,7 @@ def _load_results_from_startup_path_impl(
         n_workers=n_workers,
         _progress=_progress,
         invert=invert,
+        expected_potential_range=expected_potential_range,
     )
 
 
@@ -683,6 +700,7 @@ def _load_results_from_startup_path(
     n_workers: int | None,
     signature: tuple[str, int, int],
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Cached wrapper for startup path loading."""
     return _load_results_from_startup_path_impl(
@@ -691,6 +709,7 @@ def _load_results_from_startup_path(
         n_workers,
         signature,
         invert,
+        expected_potential_range=expected_potential_range,
     )
 
 
@@ -707,9 +726,9 @@ def _pssession_file_key(path: Path) -> tuple[str, int, int]:
     return str(path), stat.st_mtime_ns, stat.st_size
 
 
-def _live_folder_signature_key(folder: Path, method: str, invert: bool = False) -> str:
+def _live_folder_signature_key(folder: Path, method: str, invert: bool = False, expected_potential_range=None) -> str:
     """Return the Streamlit session-state key for a watched PalmSens folder."""
-    return f"pssession_live_signature::{folder.resolve()}::{method}::invert={int(invert)}"
+    return f"pssession_live_signature::{folder.resolve()}::{method}::invert={int(invert)}::{expected_potential_range}"
 
 
 def _current_pssession_files(folder: Path) -> list[Path]:
@@ -723,19 +742,19 @@ def _pssession_folder_signature(folder: Path) -> tuple[tuple[str, int, int], ...
     return tuple(_pssession_file_key(path) for path in _current_pssession_files(folder))
 
 
-def _live_folder_has_changes(folder_text: str, method: str, invert: bool = False) -> bool:
+def _live_folder_has_changes(folder_text: str, method: str, invert: bool = False, expected_potential_range=None) -> bool:
     """Return whether the watched PalmSens folder has changed since the last load."""
     folder = Path(folder_text).expanduser()
     if not folder.exists() or not folder.is_dir():
         return True
     signature = _pssession_folder_signature(folder)
-    return st.session_state.get(_live_folder_signature_key(folder, method, invert)) != signature
+    return st.session_state.get(_live_folder_signature_key(folder, method, invert, expected_potential_range)) != signature
 
 
 @st.fragment(run_every=2.0)
-def _watch_live_pssession_folder(folder_text: str, method: str, invert: bool = False) -> None:
+def _watch_live_pssession_folder(folder_text: str, method: str, invert: bool = False, expected_potential_range=None) -> None:
     """Trigger a Streamlit rerun when live PalmSens folder contents change."""
-    if _live_folder_has_changes(folder_text, method, invert):
+    if _live_folder_has_changes(folder_text, method, invert, expected_potential_range):
         st.rerun(scope="app")
 
 
@@ -757,6 +776,7 @@ def _fit_pssession_dataframes(
     method: str,
     n_workers: int | None,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Fit trace dataframes loaded from one or more PalmSens files."""
@@ -772,6 +792,7 @@ def _fit_pssession_dataframes(
         group_cols=group_cols,
         _progress=_progress,
         invert=invert,
+        expected_potential_range=expected_potential_range,
     )
 
 
@@ -780,6 +801,7 @@ def _load_results_from_live_pssession_folder(
     method: str,
     n_workers: int | None,
     invert: bool = False,
+    expected_potential_range: tuple[float, float] | None = None,
     _progress: _ProgressProtocol | None = None,
 ) -> pd.DataFrame:
     """Incrementally load, fit, cache, and export live PalmSens folder results."""
@@ -789,7 +811,7 @@ def _load_results_from_live_pssession_folder(
     if not folder.is_dir():
         raise NotADirectoryError(folder)
 
-    cache_key = f"pssession_live_cache::{folder.resolve()}::{method}::invert={int(invert)}"
+    cache_key = f"pssession_live_cache::{folder.resolve()}::{method}::invert={int(invert)}::{expected_potential_range}"
     cache = st.session_state.setdefault(cache_key, {})
     files = _current_pssession_files(folder)
     current_signature = tuple(_pssession_file_key(path) for path in files)
@@ -830,6 +852,7 @@ def _load_results_from_live_pssession_folder(
                 method=method,
                 n_workers=n_workers,
                 invert=invert,
+                expected_potential_range=expected_potential_range,
                 _progress=_progress,
             )
         except Exception as exc:
@@ -860,7 +883,7 @@ def _load_results_from_live_pssession_folder(
 
     results = _normalize_result_time(order_results_dataframe(pd.concat(frames, ignore_index=True)))
     results.to_json(folder / RESULTS_JSON_NAME, orient="records", date_format="iso", indent=2)
-    st.session_state[_live_folder_signature_key(folder, method, invert)] = current_signature
+    st.session_state[_live_folder_signature_key(folder, method, invert, expected_potential_range)] = current_signature
     return _prepare_results(results)
 
 
@@ -1033,7 +1056,15 @@ def _select_sample_position(row_count: int) -> int:
 
 def _normalization_controls(row_count: int) -> tuple[bool, int, int]:
     """Render and persist normalization controls across live-data reruns."""
-    enabled = st.sidebar.checkbox("Normalize", key=NORMALIZE_ENABLED_KEY)
+    enabled = st.sidebar.checkbox(
+        "Normalize",
+        key=NORMALIZE_ENABLED_KEY,
+        help=(
+            "Divide each peak height by the mean peak height over the selected sample indices "
+            "within each folder, method, frequency, and channel. Both limits are included, "
+            "so 0–4 uses the first five samples."
+        ),
+    )
     if not enabled:
         return False, 0, 0
 
@@ -1050,14 +1081,9 @@ def _normalization_controls(row_count: int) -> tuple[bool, int, int]:
     stored_start = min(max(stored_start, 0), max_idx)
     stored_end = min(max(stored_end, stored_start), max_idx)
 
-    start, end = st.sidebar.slider(
-        "Normalization range",
-        min_value=0,
-        max_value=max_idx,
-        value=(stored_start, stored_end),
-    )
-    if start > end:
-        start, end = end, start
+    left, right = st.sidebar.columns(2)
+    start = left.number_input("Start index", min_value=0, max_value=max_idx, value=stored_start, step=1)
+    end = right.number_input("End index", min_value=start, max_value=max_idx, value=max(start, stored_end), step=1)
     selected_range = int(start), int(end)
     st.session_state[NORMALIZATION_RANGE_KEY] = selected_range
     return True, *selected_range
@@ -1707,6 +1733,22 @@ def _run_app() -> None:
             ["Upload JSON/CSV", "PalmSens .pssession"],
         )
     method = input_section.selectbox("Fit method", ["aswift", "poly_linear"])
+    expected_potential_range = None
+    if input_section.checkbox(
+        "Peak potential range",
+        value=False,
+        help="Select only the most prominent peak within the potential range you enter.",
+    ):
+        left, right = input_section.columns(2)
+        lower = left.number_input("Lower limit (V)", value=None, format="%.6f")
+        upper = right.number_input("Upper limit (V)", value=None, format="%.6f")
+        if lower is None or upper is None:
+            input_section.info("Enter both potential limits to fit traces.")
+            st.stop()
+        if lower > upper:
+            input_section.error("Lower limit must be less than or equal to upper limit.")
+            st.stop()
+        expected_potential_range = (lower, upper)
     invert = input_section.checkbox(
         "Invert current",
         help="Invert raw current values before fitting, for example for positive-to-negative SWV sweeps.",
@@ -1725,7 +1767,7 @@ def _run_app() -> None:
     try:
         if source_kind == "Startup JSON/CSV":
             startup_signature = _file_signature(startup_path)
-            cache_key = _startup_cache_key(startup_path, method, int(n_workers), startup_signature, invert)
+            cache_key = _startup_cache_key(startup_path, method, int(n_workers), startup_signature, invert, expected_potential_range)
             results = st.session_state.get(cache_key)
             if results is None:
                 progress = _StreamlitProgress()
@@ -1735,6 +1777,7 @@ def _run_app() -> None:
                     int(n_workers),
                     startup_signature,
                     invert,
+                    expected_potential_range=expected_potential_range,
                     _progress=progress,
                 )
                 st.session_state[cache_key] = results
@@ -1748,7 +1791,7 @@ def _run_app() -> None:
                 st.info("Upload fit results, structured trace CSVs, or simple voltage/current CSVs to begin.")
                 st.stop()
             uploads = tuple((uploaded.name, uploaded.getvalue()) for uploaded in uploaded_files)
-            cache_key = _upload_cache_key(uploads, method, int(n_workers), upload_order, invert)
+            cache_key = _upload_cache_key(uploads, method, int(n_workers), upload_order, invert, expected_potential_range)
             results = st.session_state.get(cache_key)
             if results is None:
                 progress = _StreamlitProgress()
@@ -1758,6 +1801,7 @@ def _run_app() -> None:
                     int(n_workers),
                     upload_order,
                     invert,
+                    expected_potential_range=expected_potential_range,
                     _progress=progress,
                 )
                 st.session_state[cache_key] = results
@@ -1776,15 +1820,16 @@ def _run_app() -> None:
                     st.error(f"Path is not a folder: {folder}")
                     st.stop()
                 input_section.caption(f"Selected: {folder.name}")
-                progress = _StreamlitProgress() if _live_folder_has_changes(folder_text, method, invert) else None
+                progress = _StreamlitProgress() if _live_folder_has_changes(folder_text, method, invert, expected_potential_range) else None
                 results = _load_results_from_live_pssession_folder(
                     folder_text,
                     method,
                     int(n_workers),
                     invert,
+                    expected_potential_range=expected_potential_range,
                     _progress=progress,
                 )
-                _watch_live_pssession_folder(folder_text, method, invert)
+                _watch_live_pssession_folder(folder_text, method, invert, expected_potential_range)
             else:
                 st.info("Enter a folder path containing .pssession or .pssession.mp3 files to begin.")
                 st.stop()

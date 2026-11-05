@@ -21,7 +21,7 @@ try:
 except ImportError:  # pragma: no cover - SciPy may move this warning class.
     PeakPropertyWarning = RuntimeWarning
 
-from .models import AswiftSettings, FitResult, PolyLinearSettings
+from .models import AswiftSettings, FitResult, PolyLinearSettings, with_potential_range
 
 
 ASWIFT_BACKGROUND_METHOD = "derpsalsa_iter"
@@ -495,7 +495,17 @@ def huber_reweighted_lcurve(
     return best_lam, best_smooth, params
 
 
-def get_background_range(current, settings: AswiftSettings, rel_height=1.0):
+def _candidate_peaks(signal, volts, bounds):
+    peaks, _ = find_peaks(signal)
+    if bounds is not None:
+        potentials = volts[peaks]
+        peaks = peaks[(potentials >= bounds[0]) & (potentials <= bounds[1])]
+        if not peaks.size:
+            raise ValueError("No peak found within the expected potential range")
+    return peaks
+
+
+def get_background_range(current, settings: AswiftSettings, rel_height=1.0, *, volts=None):
     """Find the dominant prominence-based peak window.
 
     ASWIFT assumes one primary redox peak and uses the largest-prominence peak
@@ -507,11 +517,11 @@ def get_background_range(current, settings: AswiftSettings, rel_height=1.0):
         for slicing and may be exclusive in callers that build masks.
     """
     boundary = settings.baseline_boundary
-    peaks, props = find_peaks(current, prominence=(None, None))
+    peaks = _candidate_peaks(current, volts, settings.expected_potential_range)
     if len(peaks) == 0:
         raise ValueError("No peaks found")
 
-    best_idx = np.argmax(props["prominences"])
+    best_idx = np.argmax(peak_prominences(current, peaks)[0])
     best_peak = peaks[best_idx]
     padding = math.ceil(boundary * len(current))
 
@@ -544,7 +554,7 @@ def choose_lambda_area(
     Returns:
         ``(best_lam, best_background)`` for the derpsalsa background fit.
     """
-    lower, upper, peak_idx = get_background_range(current, settings, rel_height=1.0)
+    lower, upper, peak_idx = get_background_range(current, settings, rel_height=1.0, volts=volts)
     peak_indices = np.zeros_like(current, dtype=bool)
     peak_indices[lower:upper] = True
     baseline_fitter = Baseline(x_data=volts)
@@ -592,14 +602,14 @@ def fit_derpsalsa_background_iterative(current, volts, settings: AswiftSettings)
         lam_smoother, smooth, _ = huber_reweighted_lcurve(current, smooth, settings)
 
     _, background = choose_lambda_area(smooth, volts, settings)
-    lower, upper, _ = get_background_range(smooth, settings, rel_height=settings.peak_prominence)
+    lower, upper, _ = get_background_range(smooth, settings, rel_height=settings.peak_prominence, volts=volts)
     peak_indices = np.zeros_like(smooth, dtype=bool)
     peak_indices[lower:upper] = True
 
     return background, peak_indices, smooth
 
 
-def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, smooth_current=None):
+def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, smooth_current=None, volts=None):
     """Fit the ASWIFT peak inside the background-excluded peak window.
 
     Args:
@@ -611,7 +621,7 @@ def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, sm
             estimation.
 
     Returns:
-        ``(peak_profile, peak_signal, bg_idx)``. ``peak_profile`` is full-length
+        ``(peak_profile, peak_signal, peak_idx)``. ``peak_profile`` is full-length
         and contains ``NaN`` outside the fitted peak window.
     """
     peak_region = current[indices] - background[indices]
@@ -638,17 +648,21 @@ def fit_tikhonov_peak(current, background, indices, settings: AswiftSettings, sm
         peak_fit = smoother(peak_region, lam_peak * peak_lambda_scale)
         noise_reference = peak_region - smooth_peak
 
-    peak_idx = np.argmax(peak_fit)
+    if settings.expected_potential_range is None:
+        peak_idx = np.argmax(peak_fit)
+    else:
+        candidates = _candidate_peaks(peak_fit, volts[indices], settings.expected_potential_range)
+        peak_idx = candidates[np.argmax(peak_prominences(peak_fit, candidates)[0])]
     peak_signal = peak_fit[peak_idx]
     if peak_signal < 2 * np.mean(np.abs(noise_reference)):
         raise ValueError("Peak smaller than 2 * MAE smoothed fit residuals")
 
     popt = np.full_like(current, np.nan, dtype=float)
     popt[indices] = peak_fit
-    return popt, peak_signal, len(popt)
+    return popt, peak_signal, int(np.flatnonzero(indices)[peak_idx])
 
 
-def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitResult:
+def aswift_fit(volts, current, settings: AswiftSettings | None = None, *, expected_potential_range=None) -> FitResult:
     """Fit one SWV trace with ASWIFT.
 
     Args:
@@ -656,6 +670,7 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
         current: One-dimensional current/signal values with the same length as
             ``volts``.
         settings: Optional ``AswiftSettings`` override.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
 
     Returns:
         A ``FitResult`` containing the peak signal, the background at the peak,
@@ -665,15 +680,16 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
         ValueError: If the trace is malformed or no valid peak can be fitted.
     """
     volts, current = _validate_trace(volts, current)
-    settings = settings or AswiftSettings()
+    settings = with_potential_range(settings or AswiftSettings(), expected_potential_range)
 
     background, peak_indices, smooth_current = fit_derpsalsa_background_iterative(current, volts, settings)
-    peak_profile, peak_signal, bg_idx = fit_tikhonov_peak(
+    peak_profile, peak_signal, peak_idx = fit_tikhonov_peak(
         current,
         background,
         peak_indices,
         settings,
         smooth_current=smooth_current,
+        volts=volts,
     )
 
     peak_window_idx = np.flatnonzero(peak_indices)
@@ -682,7 +698,6 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
     peak_window = (int(peak_window_idx[0]), int(peak_window_idx[-1]) + 1)
 
     # The reported signal is max_i(p_i - b_i) in the detected peak window.
-    peak_idx = int(np.nanargmax(peak_profile))
     peak_background = background[peak_idx]
     return FitResult(
         method="aswift",
@@ -705,7 +720,7 @@ def aswift_fit(volts, current, settings: AswiftSettings | None = None) -> FitRes
     )
 
 
-def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) -> FitResult:
+def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None, *, expected_potential_range=None) -> FitResult:
     """Fit the legacy polynomial signal with a linear local baseline.
 
     Args:
@@ -713,13 +728,14 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
         current: One-dimensional current/signal values with the same length as
             ``volts``.
         settings: Optional ``PolyLinearSettings`` override.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
 
     Returns:
         A ``FitResult`` containing the polynomial peak profile and local linear
         background profile.
     """
     volts, current = _validate_trace(volts, current)
-    settings = settings or PolyLinearSettings()
+    settings = with_potential_range(settings or PolyLinearSettings(), expected_potential_range)
     if settings.savgol_window % 2 == 0:
         raise ValueError("savgol_window must be odd")
     if settings.savgol_window > current.size:
@@ -731,7 +747,7 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
     polynomial_coeffs = np.polyfit(volts, smooth_current, settings.polynomial_degree)
     polynomial_fit = np.polyval(polynomial_coeffs, volts)
 
-    peak_idxs, _ = find_peaks(polynomial_fit)
+    peak_idxs = _candidate_peaks(polynomial_fit, volts, settings.expected_potential_range)
     if len(peak_idxs) == 0:
         raise ValueError("No peaks found.")
 
@@ -781,7 +797,7 @@ def poly_linear_fit(volts, current, settings: PolyLinearSettings | None = None) 
     )
 
 
-def fit_signal(volts, current, method: str, settings=None) -> FitResult:
+def fit_signal(volts, current, method: str, settings=None, *, expected_potential_range=None) -> FitResult:
     """Dispatch to one of the supported fitting methods.
 
     Args:
@@ -790,6 +806,7 @@ def fit_signal(volts, current, method: str, settings=None) -> FitResult:
         method: Fitting method name. Supported values are ``"aswift"`` and
             ``"poly_linear"``.
         settings: Optional settings object for the selected method.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
 
     Returns:
         A ``FitResult`` from the selected fitting function.
@@ -805,4 +822,4 @@ def fit_signal(volts, current, method: str, settings=None) -> FitResult:
         allowed = ", ".join(SUPPORTED_FITTING_METHODS)
         raise ValueError(f"Unsupported fitting method '{method}'. Allowed methods: {allowed}.") from exc
 
-    return fitting_method(volts, current, settings=settings)
+    return fitting_method(volts, current, settings=settings, expected_potential_range=expected_potential_range)

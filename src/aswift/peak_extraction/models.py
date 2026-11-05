@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -39,6 +39,7 @@ class AswiftSettings:
     mad_window: int = 21
     peak_lambda_scale: float = 1.0
     peak_prominence: float = 0.5
+    expected_potential_range: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,17 @@ class PolyLinearSettings:
     savgol_window: int = 15
     savgol_degree: int = 3
     polynomial_degree: int = 15
+    expected_potential_range: tuple[float, float] | None = None
+
+
+def with_potential_range(settings, expected_potential_range):
+    bounds = expected_potential_range if expected_potential_range is not None else settings.expected_potential_range
+    if bounds is None:
+        return settings
+    bounds = np.asarray(bounds, dtype=float)
+    if bounds.shape != (2,) or not np.isfinite(bounds).all() or bounds[0] > bounds[1]:
+        raise ValueError("Expected potential range requires two finite limits with lower <= upper")
+    return replace(settings, expected_potential_range=tuple(map(float, bounds)))
 
 
 @dataclass

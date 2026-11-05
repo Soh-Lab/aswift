@@ -17,7 +17,7 @@ import pandas as pd
 from numpy.typing import NDArray
 
 from ..peak_extraction.extract_peaks import SUPPORTED_FITTING_METHODS, fit_signal
-from ..peak_extraction.models import AswiftSettings, FitResult, failed_fit_result
+from ..peak_extraction.models import AswiftSettings, PolyLinearSettings, with_potential_range, FitResult, failed_fit_result
 from .io import get_date, read_swv_csv
 
 
@@ -241,7 +241,8 @@ def fit_traces(
     traces: Sequence[SwvTrace],
     *,
     method: str = "aswift",
-    settings: AswiftSettings | None = None,
+    settings: AswiftSettings | PolyLinearSettings | None = None,
+    expected_potential_range: tuple[float, float] | None = None,
     n_workers: int | None = None,
     parallel_backend: str = "thread",
     chunksize: int = 16,
@@ -258,6 +259,7 @@ def fit_traces(
         traces: Sequence of ``SwvTrace`` objects.
         method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
         settings: Optional settings object for the selected method.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
         n_workers: Worker count. ``None`` defaults to the single-worker path.
         parallel_backend: ``"serial"``, ``"thread"``, ``"process"``, or legacy
             alias ``"pool"``.
@@ -271,6 +273,10 @@ def fit_traces(
     """
     if method not in SUPPORTED_FITTING_METHODS:
         raise ValueError(f"method must be one of {SUPPORTED_FITTING_METHODS}")
+
+    if expected_potential_range is not None:
+        defaults = AswiftSettings if method == "aswift" else PolyLinearSettings
+        settings = with_potential_range(settings or defaults(), expected_potential_range)
 
     parallel_backend = _normalize_backend(parallel_backend)
     chunksize = _normalize_chunksize(chunksize)
@@ -387,7 +393,8 @@ def fit_dataframe(
     df: pd.DataFrame,
     *,
     method: str = "aswift",
-    settings: AswiftSettings | None = None,
+    settings: AswiftSettings | PolyLinearSettings | None = None,
+    expected_potential_range: tuple[float, float] | None = None,
     n_workers: int | None = None,
     parallel_backend: str = "thread",
     chunksize: int = 16,
@@ -404,6 +411,7 @@ def fit_dataframe(
         df: Input SWV dataframe.
         method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
         settings: Optional settings object for the selected method.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
         n_workers: Worker count. ``None`` defaults to one worker.
         parallel_backend: ``"serial"``, ``"thread"``, ``"process"``, or
             ``"pool"``.
@@ -419,6 +427,7 @@ def fit_dataframe(
         traces,
         method=method,
         settings=settings,
+        expected_potential_range=expected_potential_range,
         n_workers=n_workers,
         parallel_backend=parallel_backend,
         chunksize=chunksize,
@@ -722,7 +731,8 @@ def fit_pssession_folder(
     folder: str | Path,
     *,
     method: str = "aswift",
-    settings: AswiftSettings | None = None,
+    settings: AswiftSettings | PolyLinearSettings | None = None,
+    expected_potential_range: tuple[float, float] | None = None,
     n_workers: int | None = None,
     parallel_backend: str = "thread",
     chunksize: int = 16,
@@ -738,6 +748,7 @@ def fit_pssession_folder(
         folder: Directory containing PalmSens session files.
         method: Fitting method name, ``"aswift"`` or ``"poly_linear"``.
         settings: Optional settings object for the selected method.
+        expected_potential_range: Optional inclusive (lower, upper) limits in volts.
         n_workers: Number of fitting workers; ``None`` uses one worker.
         parallel_backend: ``"serial"``, ``"thread"``, or ``"process"``.
         chunksize: Process-pool task chunk size.
@@ -756,6 +767,7 @@ def fit_pssession_folder(
         df,
         method=method,
         settings=settings,
+        expected_potential_range=expected_potential_range,
         n_workers=n_workers,
         parallel_backend=parallel_backend,
         chunksize=chunksize,
